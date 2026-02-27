@@ -1,0 +1,672 @@
+{
+  "id": "tw-03-telegram-commands-2025",
+  "name": "tw-03-telegram-commands",
+  "nodes": [
+    {
+      "id": "node-telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    },
+    {
+      "id": "node-filter-topic",
+      "name": "Filter Topic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300],
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nif (!msg) return [];\nif (msg.message_thread_id !== 16) return [];\nreturn [$input.first()];"
+      }
+    },
+    {
+      "id": "node-parse-route",
+      "name": "Parse & Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300],
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nconst caption = (msg.caption || '').trim();\nconst text = (msg.text || '').trim();\nconst capLower = caption.toLowerCase();\nconst textLower = text.toLowerCase();\n\nlet route, tweetNum, newText, fileId;\n\nif (msg.photo && capLower.startsWith('aprova')) {\n  const match = caption.match(/aprova\\s+(\\d+)/i);\n  tweetNum = match ? parseInt(match[1]) : 1;\n  const photos = msg.photo;\n  fileId = photos[photos.length - 1].file_id;\n  route = 'photo_approve';\n} else if (!msg.photo && textLower.startsWith('aprova')) {\n  const match = text.match(/aprova\\s+(\\d+)/i);\n  tweetNum = match ? parseInt(match[1]) : 1;\n  route = 'text_approve';\n} else if (textLower.startsWith('edita')) {\n  const match = text.match(/edita\\s+(\\d+):\\s*(.+)/i);\n  tweetNum = match ? parseInt(match[1]) : 1;\n  newText = match ? match[2].trim() : text;\n  route = 'edit';\n} else if (textLower === 'ignore') {\n  route = 'ignore';\n} else {\n  route = 'unknown';\n}\n\nconst hoje = new Date().toISOString().split('T')[0];\nreturn [{ json: { msg, route, tweetNum, newText, fileId, hoje, chatId: msg.chat.id, threadId: msg.message_thread_id } }];"
+      }
+    },
+    {
+      "id": "node-command-switch",
+      "name": "Command Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [860, 300],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ $json.route === 'photo_approve' ? 0 : $json.route === 'text_approve' ? 1 : $json.route === 'edit' ? 2 : 3 }}"
+      }
+    },
+    {
+      "id": "node-store-photo-context",
+      "name": "Store Photo Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 60],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  fileId: $json.fileId,\n  tweetNum: $json.tweetNum,\n  hoje: $json.hoje,\n  chatId: $json.chatId,\n  threadId: $json.threadId\n}}];"
+      }
+    },
+    {
+      "id": "node-telegram-getfile",
+      "name": "Telegram getFile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 60],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.telegram.org/bot' + $vars.TELEGRAM_BOT_TOKEN + '/getFile' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "file_id",
+              "value": "={{ $json.fileId }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-download-photo",
+      "name": "Download Photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 60],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.telegram.org/file/bot' + $vars.TELEGRAM_BOT_TOKEN + '/' + $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "node-upload-twitter-media",
+      "name": "Upload to Twitter Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "https://upload.twitter.com/1.1/media/upload.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth1Api",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media",
+              "value": "={{ $binary.data }}",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "TWITTER_OAUTH1_CRED_ID",
+          "name": "Twitter OAuth1a — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-fetch-draft-photo",
+      "name": "Fetch Draft for Photo Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1900, 60],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_daily_research' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $vars.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ 'eq.' + $('Parse & Route').item.json.hoje }}"
+            },
+            {
+              "name": "select",
+              "value": "id,drafts"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-build-photo-tweet-body",
+      "name": "Build Photo Tweet Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 60],
+      "parameters": {
+        "jsCode": "const mediaId = $('Upload to Twitter Media').item.json.media_id_string;\nconst supabaseData = $('Fetch Draft for Photo Branch').item.json;\nconst rows = Array.isArray(supabaseData) ? supabaseData : [supabaseData];\nconst row = rows[0];\nconst drafts = typeof row.drafts === 'string' ? JSON.parse(row.drafts) : row.drafts;\nconst tweetNum = $('Parse & Route').item.json.tweetNum;\nconst draft = drafts.find(d => d.id === tweetNum) || drafts[0];\n\nreturn [{ json: {\n  tweetBody: { text: draft.texto, media: { media_ids: [mediaId] } },\n  draftText: draft.texto,\n  tweetNum,\n  chatId: $('Parse & Route').item.json.chatId\n}}];"
+      }
+    },
+    {
+      "id": "node-post-tweet-photo",
+      "name": "Post Tweet with Photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth1Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tweetBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "TWITTER_OAUTH1_CRED_ID",
+          "name": "Twitter OAuth1a — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-telegram-confirm-photo",
+      "name": "Telegram Confirm Photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $vars.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Parse & Route').item.json.chatId, message_thread_id: 16, text: '✅ Tweet ' + $('Build Photo Tweet Body').item.json.tweetNum + ' postado com foto!\\n🔗 https://x.com/bodybasehealth/status/' + ($json.data && $json.data.id ? $json.data.id : 'erro') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-fetch-draft-text",
+      "name": "Fetch Draft for Text Branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_daily_research' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $vars.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ 'eq.' + $('Parse & Route').item.json.hoje }}"
+            },
+            {
+              "name": "select",
+              "value": "id,drafts"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-build-text-tweet-body",
+      "name": "Post Tweet Text Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300],
+      "parameters": {
+        "jsCode": "const supabaseData = $input.first().json;\nconst rows = Array.isArray(supabaseData) ? supabaseData : [supabaseData];\nconst row = rows[0];\nconst drafts = typeof row.drafts === 'string' ? JSON.parse(row.drafts) : row.drafts;\nconst tweetNum = $('Parse & Route').item.json.tweetNum;\nconst draft = drafts.find(d => d.id === tweetNum) || drafts[0];\nreturn [{ json: { tweetBody: { text: draft.texto }, draftText: draft.texto, tweetNum } }];"
+      }
+    },
+    {
+      "id": "node-post-tweet-text",
+      "name": "Post Tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth1Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tweetBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "TWITTER_OAUTH1_CRED_ID",
+          "name": "Twitter OAuth1a — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-telegram-confirm-text",
+      "name": "Telegram Confirm Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $vars.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Parse & Route').item.json.chatId, message_thread_id: 16, text: '✅ Tweet ' + $('Post Tweet Text Only').item.json.tweetNum + ' postado!\\n🔗 https://x.com/bodybasehealth/status/' + ($json.data && $json.data.id ? $json.data.id : 'erro') }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-fetch-draft-edit",
+      "name": "Fetch Drafts for Edit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 540],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_daily_research' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $vars.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ 'eq.' + $('Parse & Route').item.json.hoje }}"
+            },
+            {
+              "name": "select",
+              "value": "id,drafts"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-update-draft",
+      "name": "Update Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 540],
+      "parameters": {
+        "jsCode": "const supabaseData = $input.first().json;\nconst rows = Array.isArray(supabaseData) ? supabaseData : [supabaseData];\nconst row = rows[0];\nconst drafts = typeof row.drafts === 'string' ? JSON.parse(row.drafts) : row.drafts;\nconst { tweetNum, newText, hoje } = $('Parse & Route').item.json;\n\nconst updated = drafts.map(d => d.id === tweetNum ? { ...d, texto: newText, char_count: newText.length } : d);\nreturn [{ json: { supabaseId: row.id, drafts: updated, tweetNum, newText, hoje } }];"
+      }
+    },
+    {
+      "id": "node-save-updated-draft",
+      "name": "Save Updated Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 540],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_daily_research?date=eq.' + $json.hoje }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ drafts: $json.drafts }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-telegram-confirm-edit",
+      "name": "Telegram Confirm Edit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 540],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $vars.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Parse & Route').item.json.chatId, message_thread_id: 16, text: '✏️ Tweet ' + $('Update Draft').item.json.tweetNum + ' atualizado:\\n\\n' + $('Update Draft').item.json.newText + '\\n\\nAprova agora? Responda \"aprova ' + $('Update Draft').item.json.tweetNum + '\"' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-build-ignore-message",
+      "name": "Build Ignore Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 780],
+      "parameters": {
+        "jsCode": "const route = $('Parse & Route').item.json.route;\nconst chatId = $('Parse & Route').item.json.chatId;\nconst msg = route === 'ignore'\n  ? '❌ Rascunhos de hoje descartados.'\n  : '❓ Comando não reconhecido.\\n\\nUse:\\n• aprova N\\n• [foto] + caption \"aprova N\"\\n• edita N: texto\\n• ignore';\nreturn [{ json: { text: msg, chatId } }];"
+      }
+    },
+    {
+      "id": "node-send-ignore-reply",
+      "name": "Send Ignore/Unknown Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 780],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $vars.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, message_thread_id: 16, text: $json.text }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Topic": {
+      "main": [
+        [
+          {
+            "node": "Parse & Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Route": {
+      "main": [
+        [
+          {
+            "node": "Command Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Command Switch": {
+      "main": [
+        [
+          {
+            "node": "Store Photo Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Draft for Text Branch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Drafts for Edit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Ignore Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Photo Context": {
+      "main": [
+        [
+          {
+            "node": "Telegram getFile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram getFile": {
+      "main": [
+        [
+          {
+            "node": "Download Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Photo": {
+      "main": [
+        [
+          {
+            "node": "Upload to Twitter Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Twitter Media": {
+      "main": [
+        [
+          {
+            "node": "Fetch Draft for Photo Branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Draft for Photo Branch": {
+      "main": [
+        [
+          {
+            "node": "Build Photo Tweet Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Photo Tweet Body": {
+      "main": [
+        [
+          {
+            "node": "Post Tweet with Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Tweet with Photo": {
+      "main": [
+        [
+          {
+            "node": "Telegram Confirm Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Draft for Text Branch": {
+      "main": [
+        [
+          {
+            "node": "Post Tweet Text Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Tweet Text Only": {
+      "main": [
+        [
+          {
+            "node": "Post Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Tweet": {
+      "main": [
+        [
+          {
+            "node": "Telegram Confirm Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Drafts for Edit": {
+      "main": [
+        [
+          {
+            "node": "Update Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Draft": {
+      "main": [
+        [
+          {
+            "node": "Save Updated Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Updated Draft": {
+      "main": [
+        [
+          {
+            "node": "Telegram Confirm Edit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Ignore Message": {
+      "main": [
+        [
+          {
+            "node": "Send Ignore/Unknown Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "tw-03"
+  },
+  "tags": []
+}

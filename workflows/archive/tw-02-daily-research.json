@@ -1,0 +1,576 @@
+{
+  "id": "tw-02-daily-research-2025",
+  "name": "tw-02-daily-research",
+  "nodes": [
+    {
+      "id": "node-schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-get-today-date",
+      "name": "Get Today's Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "parameters": {
+        "jsCode": "const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\nconst yesterday = new Date(Date.now() - 86400000).toISOString();\nreturn [{ json: { hoje, yesterday } }];"
+      }
+    },
+    {
+      "id": "node-x-search-pt",
+      "name": "X Search PT-BR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 0],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.twitter.com/2/tweets/search/recent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "(longevidade OR biomarcadores) -is:retweet lang:pt"
+            },
+            {
+              "name": "max_results",
+              "value": "20"
+            },
+            {
+              "name": "tweet.fields",
+              "value": "text,public_metrics,created_at"
+            },
+            {
+              "name": "sort_order",
+              "value": "relevancy"
+            },
+            {
+              "name": "start_time",
+              "value": "={{ $json.yesterday }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TWITTER_BEARER_CRED_ID",
+          "name": "Twitter Bearer — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-filter-pt",
+      "name": "Filter PT-BR Tweets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 0],
+      "parameters": {
+        "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 100)\n  .sort((a, b) => b.public_metrics.like_count - a.public_metrics.like_count)\n  .slice(0, 5)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'twitter_pt' }));\nreturn [{ json: { tweets_pt: filtered } }];"
+      }
+    },
+    {
+      "id": "node-timeline-attia",
+      "name": "Timeline @PeterAttiaMD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.twitter.com/2/users/1386826780/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "max_results",
+              "value": "10"
+            },
+            {
+              "name": "tweet.fields",
+              "value": "text,public_metrics,created_at"
+            },
+            {
+              "name": "start_time",
+              "value": "={{ $json.yesterday }}"
+            },
+            {
+              "name": "exclude",
+              "value": "retweets,replies"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TWITTER_BEARER_CRED_ID",
+          "name": "Twitter Bearer — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-filter-attia",
+      "name": "Filter Attia Tweets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 200],
+      "parameters": {
+        "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 200)\n  .slice(0, 3)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'attia' }));\nreturn [{ json: { tweets_attia: filtered } }];"
+      }
+    },
+    {
+      "id": "node-timeline-huberman",
+      "name": "Timeline @hubermanlab",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 400],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.twitter.com/2/users/815279808/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "max_results",
+              "value": "10"
+            },
+            {
+              "name": "tweet.fields",
+              "value": "text,public_metrics,created_at"
+            },
+            {
+              "name": "start_time",
+              "value": "={{ $json.yesterday }}"
+            },
+            {
+              "name": "exclude",
+              "value": "retweets,replies"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TWITTER_BEARER_CRED_ID",
+          "name": "Twitter Bearer — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-filter-huberman",
+      "name": "Filter Huberman Tweets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 400],
+      "parameters": {
+        "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 500)\n  .slice(0, 3)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'huberman' }));\nreturn [{ json: { tweets_huberman: filtered } }];"
+      }
+    },
+    {
+      "id": "node-pubmed-rss",
+      "name": "PubMed RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 600],
+      "parameters": {
+        "method": "GET",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=longevity+biomarkers+preventive+health&format=rss&limit=5&sort=date",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "xml"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "node-parse-pubmed",
+      "name": "Parse PubMed RSS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 600],
+      "parameters": {
+        "jsCode": "// Parse RSS items - n8n XML node returns parsed structure\nconst channel = $input.first().json?.rss?.channel || {};\nconst items = Array.isArray(channel.item) ? channel.item : (channel.item ? [channel.item] : []);\nconst parsed = items.slice(0, 5).map(item => ({\n  title: item.title || '',\n  abstract: (item.description || '').replace(/<[^>]*>/g, '').substring(0, 400),\n  url: item.link || '',\n  source: 'pubmed'\n}));\nreturn [{ json: { pubmed: parsed } }];"
+      }
+    },
+    {
+      "id": "node-build-context",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Collect all items from different branches\nconst allItems = $input.all();\nlet tweets_pt = [], tweets_attia = [], tweets_huberman = [], pubmed = [];\n\nfor (const item of allItems) {\n  if (item.json.tweets_pt) tweets_pt = item.json.tweets_pt;\n  if (item.json.tweets_attia) tweets_attia = item.json.tweets_attia;\n  if (item.json.tweets_huberman) tweets_huberman = item.json.tweets_huberman;\n  if (item.json.pubmed) pubmed = item.json.pubmed;\n}\n\nconst hoje = new Date().toLocaleDateString('pt-BR');\n\nlet context = `## TWITTER PT-BR (top ${tweets_pt.length} por likes)\\n`;\ntweets_pt.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## ATTIA (\\u00faltimas 24h)\\n`;\ntweets_attia.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## HUBERMAN (\\u00faltimas 24h)\\n`;\ntweets_huberman.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## PUBMED (recentes)\\n`;\npubmed.forEach((t, i) => { context += `${i+1}. ${t.title}\\n   ${t.abstract}\\n   URL: ${t.url}\\n`; });\n\ncontext += `\\n## DATA\\nHoje: ${hoje}`;\n\nreturn [{ json: { context, hoje: new Date().toISOString().split('T')[0] } }];"
+      }
+    },
+    {
+      "id": "node-claude-api",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $vars.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 2000,\n  \"system\": \"Voc\\u00ea \\u00e9 o ghostwriter de @bodybasehealth, conta de health-tech focada em sa\\u00fade preventiva e biomarcadores. Tom: direto, baseado em dado, sem vender, sem claim m\\u00e9dico.\\n\\nRegras absolutas:\\n- Nunca inventar estat\\u00edstica. Se usar n\\u00famero, deve vir das fontes fornecidas.\\n- Nunca usar \\\"trata\\\", \\\"cura\\\", \\\"previne\\\" como claim.\\n- M\\u00e1x 280 chars por tweet.\\n- Conectar \\u00e0 BodyBase em no m\\u00e1ximo 1 dos 3 rascunhos, de forma natural.\\n\\nFormato obrigat\\u00f3rio de cada rascunho (framework Tese\\u2192Consequ\\u00eancia\\u2192Prova\\u2192Revela\\u00e7\\u00e3o\\u2192CTA):\\n- Tese: afirma\\u00e7\\u00e3o direta e espec\\u00edfica (n\\u00e3o gen\\u00e9rica)\\n- Consequ\\u00eancia: o que isso muda na vida de quem l\\u00ea\\n- Prova: dado, estudo ou observa\\u00e7\\u00e3o da fonte\\n- Revela\\u00e7\\u00e3o: o insight que a maioria n\\u00e3o sabe\\n- CTA: pergunta de engajamento ou convite (sem link externo nos primeiros 60 dias)\\n\\nRetorna APENAS JSON v\\u00e1lido neste schema:\\n{\\\"drafts\\\": [{\\\"id\\\": 1, \\\"format\\\": \\\"Dado Surpreendente|Opini\\u00e3o Contr\\u00e1ria|Thread|Not\\u00edcia Comentada\\\", \\\"texto\\\": \\\"texto completo do tweet \\u2264280 chars\\\", \\\"char_count\\\": 180, \\\"fonte\\\": \\\"url ou descri\\u00e7\\u00e3o da fonte usada\\\", \\\"horario_sugerido\\\": \\\"08h|12h|18h\\\"}]}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Fontes de hoje:\\n\\n' + $json.context + '\\n\\nGera 3 rascunhos.') }}\n    }\n  ]\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-parse-claude",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 300],
+      "parameters": {
+        "jsCode": "const responseText = $input.first().json.content[0].text;\nlet drafts;\ntry {\n  // Handle case where Claude wraps in markdown code blocks\n  const cleaned = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  drafts = JSON.parse(cleaned).drafts;\n} catch(e) {\n  // Fallback: extract JSON manually\n  const match = responseText.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    drafts = JSON.parse(match[0]).drafts;\n  } else {\n    throw new Error('Could not parse Claude response: ' + responseText.substring(0, 200));\n  }\n}\nreturn [{ json: { drafts, context: $('Build Context').item.json.context, hoje: $('Build Context').item.json.hoje } }];"
+      }
+    },
+    {
+      "id": "node-validate-chars",
+      "name": "Validate Chars",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 300],
+      "parameters": {
+        "jsCode": "const { drafts, context, hoje } = $input.first().json;\nconst validated = drafts.map(d => {\n  const count = d.texto.length;\n  const flag = count > 280 ? '\\u26a0\\ufe0f ' : '';\n  return {\n    ...d,\n    texto: count > 280 ? d.texto.substring(0, 277) + '...' : d.texto,\n    char_count: Math.min(count, 280),\n    char_flag: flag\n  };\n});\nreturn [{ json: { drafts: validated, context, hoje } }];"
+      }
+    },
+    {
+      "id": "node-format-telegram",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 300],
+      "parameters": {
+        "jsCode": "const { drafts, hoje } = $input.first().json;\nconst data = new Date().toLocaleDateString('pt-BR');\n\nlet msg = `\\ud83d\\udc26 *TWEETS DO DIA \\u2014 ${data}*\\n\\n`;\n\ndrafts.forEach((d, i) => {\n  msg += `\\u2501\\u2501\\u2501 TWEET ${d.id} (${d.horario_sugerido}) \\u2014 ${d.format} \\u2501\\u2501\\u2501\\n`;\n  msg += `${d.char_flag}${d.texto}\\n`;\n  msg += `\\ud83d\\udcca ${d.char_count} chars | Fonte: ${d.fonte}\\n\\n`;\n});\n\nmsg += `---\\n\\u2705 aprova \\\\[1,2,3\\\\]  |  \\u270f\\ufe0f edita N: \\\\[texto\\\\]  |  \\u274c ignore`;\n\nreturn [{ json: { message: msg, drafts: $input.first().json.drafts, context: $input.first().json.context, hoje } }];"
+      }
+    },
+    {
+      "id": "node-send-telegram",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2800, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "message_thread_id": 16,
+          "parse_mode": "MarkdownV2"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    },
+    {
+      "id": "node-save-supabase",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3100, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/tw_daily_research",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"date\": \"{{ $json.hoje }}\",\n  \"drafts\": {{ JSON.stringify(JSON.stringify($json.drafts)) }},\n  \"context_sources\": {{ JSON.stringify($json.context) }}\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Today's Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Today's Date": {
+      "main": [
+        [
+          {
+            "node": "X Search PT-BR",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Timeline @PeterAttiaMD",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Timeline @hubermanlab",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PubMed RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X Search PT-BR": {
+      "main": [
+        [
+          {
+            "node": "Filter PT-BR Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timeline @PeterAttiaMD": {
+      "main": [
+        [
+          {
+            "node": "Filter Attia Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timeline @hubermanlab": {
+      "main": [
+        [
+          {
+            "node": "Filter Huberman Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PubMed RSS": {
+      "main": [
+        [
+          {
+            "node": "Parse PubMed RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter PT-BR Tweets": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Attia Tweets": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Filter Huberman Tweets": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Parse PubMed RSS": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Validate Chars",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Chars": {
+      "main": [
+        [
+          {
+            "node": "Format Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Telegram": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

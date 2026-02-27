@@ -1,0 +1,239 @@
+{
+  "id": "tw-01-poster-2025",
+  "name": "tw-01-poster",
+  "nodes": [
+    {
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tw/post",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-validate",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || {};\nconst text = body.text;\nconst account = body.account;\n\nif (!text || text.length > 280) {\n  $respondWith({\n    statusCode: 400,\n    body: JSON.stringify({ error: 'text required and must be ≤280 chars' }),\n    headers: { 'Content-Type': 'application/json' }\n  });\n  return [];\n}\n\nif (account !== 'bodybasehealth') {\n  $respondWith({\n    statusCode: 400,\n    body: JSON.stringify({ error: 'conta pessoal não é automatizada via API' }),\n    headers: { 'Content-Type': 'application/json' }\n  });\n  return [];\n}\n\nreturn [{ json: { text, account, thread_of: body.thread_of || null } }];"
+      }
+    },
+    {
+      "id": "node-build-tweet-body",
+      "name": "Build Tweet Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300],
+      "parameters": {
+        "jsCode": "const { text, thread_of } = $input.item.json;\n\nconst tweetBody = { text };\n\nif (thread_of) {\n  tweetBody.reply = { in_reply_to_tweet_id: thread_of };\n}\n\nreturn [{ json: { tweetBody, text, thread_of } }];"
+      }
+    },
+    {
+      "id": "node-post-tweet",
+      "name": "Post Tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth1Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tweetBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "oAuth1Api": {
+          "id": "TWITTER_OAUTH1_CRED_ID",
+          "name": "Twitter OAuth1a — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-check-result",
+      "name": "Check Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1000, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-tweet-id",
+              "leftValue": "={{ $json.data?.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-telegram-success",
+      "name": "Telegram Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1200, 160],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
+        "text": "✅ Postado @bodybasehealth\n🔗 https://x.com/bodybasehealth/status/{{ $('Post Tweet').item.json.data.id }}\n\n{{ $('Webhook').item.json.body.text }}",
+        "additionalFields": {
+          "message_thread_id": 16
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    },
+    {
+      "id": "node-respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1400, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ tweet_id: $('Post Tweet').item.json.data.id, tweet_url: 'https://x.com/bodybasehealth/status/' + $('Post Tweet').item.json.data.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "node-telegram-error",
+      "name": "Telegram Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1200, 440],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
+        "text": "⚠️ ERRO ao postar tweet @bodybasehealth\n\nErro: {{ $json.error?.message || JSON.stringify($json) }}\n\nTexto tentado: {{ $('Webhook').item.json.body.text }}",
+        "additionalFields": {
+          "message_thread_id": 20
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Build Tweet Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Tweet Body": {
+      "main": [
+        [
+          {
+            "node": "Post Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Tweet": {
+      "main": [
+        [
+          {
+            "node": "Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Result": {
+      "main": [
+        [
+          {
+            "node": "Telegram Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Success": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

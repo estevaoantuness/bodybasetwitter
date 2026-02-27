@@ -1,0 +1,341 @@
+{
+  "id": "tw-04-performance-tracker-2025",
+  "name": "tw-04-performance-tracker",
+  "nodes": [
+    {
+      "id": "node-schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 21 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-build-window",
+      "name": "Build Time Window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300],
+      "parameters": {
+        "jsCode": "// Janela: últimas 48h para pegar tweets dos últimos 2 dias\nconst now = new Date();\nconst cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();\nconst today = now.toISOString().split('T')[0];\nreturn [{ json: { cutoff, today, now: now.toISOString() } }];"
+      }
+    },
+    {
+      "id": "node-fetch-unchecked-tweets",
+      "name": "Fetch Unchecked Tweets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_posted' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "select", "value": "tweet_id,tweet_text,format,scheduled_slot,posted_at" },
+            { "name": "checked_at", "value": "is.null" },
+            { "name": "posted_at", "value": "=gte.{{ $json.cutoff }}" },
+            { "name": "order", "value": "posted_at.desc" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "node-check-has-tweets",
+      "name": "Has Tweets?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [840, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-length",
+              "leftValue": "={{ Array.isArray($json) && $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-build-ids-string",
+      "name": "Build Tweet IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 160],
+      "parameters": {
+        "jsCode": "// Twitter v2 permite até 100 IDs por chamada\nconst tweets = Array.isArray($input.first().json) ? $input.first().json : [$input.first().json];\nconst ids = tweets.map(t => t.tweet_id).join(',');\nreturn [{ json: { ids, tweets, count: tweets.length } }];"
+      }
+    },
+    {
+      "id": "node-fetch-twitter-metrics",
+      "name": "Fetch Twitter Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 160],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "ids", "value": "={{ $json.ids }}" },
+            { "name": "tweet.fields", "value": "public_metrics,created_at" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TWITTER_BEARER_CRED_ID",
+          "name": "Twitter Bearer — BodyBase"
+        }
+      }
+    },
+    {
+      "id": "node-score-and-prepare",
+      "name": "Score & Prepare Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 160],
+      "parameters": {
+        "jsCode": "// Pegar tweets originais (com format/slot) e métricas do Twitter\nconst metricsResponse = $input.first().json;\nconst tweetsData = $('Build Tweet IDs').first().json.tweets;\n\nconst metrics = metricsResponse.data || [];\nconst now = new Date().toISOString();\n\n// Função de score: 0-100\nfunction scorePerformance(m) {\n  const imp = m.impression_count || 0;\n  const likes = m.like_count || 0;\n  const rt = m.retweet_count || 0;\n  const rep = m.reply_count || 0;\n  const bk = m.bookmark_count || 0;\n\n  // Pesos: engajamento real vale mais que impressões\n  const eng = likes * 3 + rt * 5 + rep * 4 + bk * 4;\n\n  // Score baseado em benchmarks para conta nova/crescendo\n  // Viral: >1000 impressões + >20 likes OU eng > 100\n  // Good: >300 impressões + >5 likes\n  // Normal: >50 impressões\n  // Flop: resto\n  let score = 0;\n  if (imp > 0) score += Math.min(30, Math.floor(imp / 50)); // até 30 pts por impressões\n  if (likes > 0) score += Math.min(30, likes * 3);           // até 30 pts por likes\n  if (rt > 0) score += Math.min(20, rt * 5);                 // até 20 pts por RT\n  if (rep > 0) score += Math.min(10, rep * 2);               // até 10 pts por replies\n  if (bk > 0) score += Math.min(10, bk * 2);                 // até 10 pts por bookmarks\n  score = Math.min(100, score);\n\n  let label;\n  if (score >= 70) label = 'viral';\n  else if (score >= 40) label = 'good';\n  else if (score >= 15) label = 'normal';\n  else label = 'flop';\n\n  return { score, label, imp, likes, rt, rep, bk };\n}\n\n// Mapear métricas para tweets originais\nconst results = metrics.map(m => {\n  const original = tweetsData.find(t => t.tweet_id === m.id) || {};\n  const pm = m.public_metrics || {};\n  const s = scorePerformance(pm);\n  return {\n    tweet_id: m.id,\n    tweet_text: original.tweet_text,\n    format: original.format,\n    scheduled_slot: original.scheduled_slot,\n    posted_at: original.posted_at,\n    impressions: s.imp,\n    likes: s.likes,\n    retweets: s.rt,\n    replies: s.rep,\n    bookmarks: s.bk,\n    performance_score: s.score,\n    performance_label: s.label,\n    checked_at: now\n  };\n});\n\n// Highlights para notificar\nconst virais = results.filter(r => r.performance_label === 'viral');\nconst bons = results.filter(r => r.performance_label === 'good');\n\nreturn [{ json: { results, virais, bons, total: results.length, now } }];"
+      }
+    },
+    {
+      "id": "node-update-supabase",
+      "name": "Update Supabase Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 160],
+      "parameters": {
+        "jsCode": "// Atualizar cada tweet via Supabase REST API\nconst { results } = $input.first().json;\nconst supabaseUrl = $vars.SUPABASE_URL;\nconst supabaseKey = $vars.SUPABASE_KEY;\n\nconst updates = results.map(r => ({\n  url: `${supabaseUrl}/rest/v1/tw_posted?tweet_id=eq.${r.tweet_id}`,\n  method: 'PATCH',\n  headers: {\n    'apikey': supabaseKey,\n    'Authorization': `Bearer ${supabaseKey}`,\n    'Content-Type': 'application/json',\n    'Prefer': 'return=minimal'\n  },\n  body: JSON.stringify({\n    impressions: r.impressions,\n    likes: r.likes,\n    retweets: r.retweets,\n    replies: r.replies,\n    bookmarks: r.bookmarks,\n    performance_score: r.performance_score,\n    performance_label: r.performance_label,\n    checked_at: r.checked_at\n  })\n}));\n\n// Em n8n não temos fetch nativo — retornar para nó HTTP em batch\n// Passamos o primeiro update + lista completa para processamento sequencial\nreturn [{ json: { updates, results: $input.first().json.results, virais: $input.first().json.virais, bons: $input.first().json.bons, total: $input.first().json.total } }];"
+      }
+    },
+    {
+      "id": "node-supabase-batch-update",
+      "name": "Supabase Batch Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 160],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/tw_posted' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "tweet_id", "value": "=in.({{ $json.results.map(r => r.tweet_id).join(',') }})" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $vars.SUPABASE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $vars.SUPABASE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ impressions: null, likes: null, retweets: null, replies: null, bookmarks: null, performance_score: null, performance_label: null, checked_at: $json.results[0].checked_at }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "node-build-report",
+      "name": "Build Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 160],
+      "parameters": {
+        "jsCode": "const { results, virais, bons, total } = $('Score & Prepare Updates').first().json;\n\n// Emojis por label\nconst labelEmoji = { viral: '🔥', good: '✅', normal: '📊', flop: '💤' };\n\n// Tabela de resultados\nconst linhas = results\n  .sort((a, b) => b.performance_score - a.performance_score)\n  .map(r => {\n    const emoji = labelEmoji[r.performance_label] || '📊';\n    const slot = r.scheduled_slot || '?';\n    const fmt = r.format ? r.format.replace('_', ' ') : '?';\n    return `${emoji} [${slot}] ${fmt}\\n   👁 ${r.impressions} imp • ❤️ ${r.likes} • 🔁 ${r.retweets} • 💬 ${r.replies}\\n   Score: ${r.performance_score}/100 — ${r.performance_label}\\n   🔗 https://x.com/bodybasehealth/status/${r.tweet_id}`;\n  })\n  .join('\\n\\n');\n\n// Destaques\nlet destaques = '';\nif (virais.length > 0) {\n  destaques += `\\n🔥 VIRAIS: ${virais.length} tweet${virais.length > 1 ? 's' : ''}`;\n}\nif (bons.length > 0) {\n  destaques += `\\n✅ BONS: ${bons.length} tweet${bons.length > 1 ? 's' : ''}`;\n}\n\n// Insight de aprendizado\nconst topFormat = results\n  .filter(r => r.format)\n  .sort((a, b) => b.performance_score - a.performance_score)[0];\nconst insight = topFormat\n  ? `\\n💡 Melhor formato hoje: ${topFormat.format} (score ${topFormat.performance_score})`\n  : '';\n\nconst report = `📊 PERFORMANCE DIÁRIA — @bodybasehealth\\n${'─'.repeat(35)}\\nAnalisados: ${total} tweet${total > 1 ? 's' : ''}${destaques}${insight}\\n\\n${linhas}`;\n\nreturn [{ json: { report, hasHighlights: virais.length > 0 || bons.length > 0, virais, bons } }];"
+      }
+    },
+    {
+      "id": "node-telegram-report",
+      "name": "Telegram — Relatório Sistema",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2400, 160],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.report }}",
+        "additionalFields": {
+          "message_thread_id": 20,
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    },
+    {
+      "id": "node-telegram-highlight",
+      "name": "Telegram — Destaque Viral",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2600, 160],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-has-highlights",
+              "leftValue": "={{ $('Build Report').first().json.hasHighlights }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node-telegram-highlight-msg",
+      "name": "Telegram — Alerta Viral",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2800, 60],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
+        "text": "={{ '🔥 DESTAQUE — @bodybasehealth\\n\\n' + $('Build Report').first().json.virais.concat($('Build Report').first().json.bons).map(r => r.performance_label === 'viral' ? '🔥 VIRAL: ' : '✅ BOM: ' + r.tweet_text.substring(0, 100) + '...\\n👁 ' + r.impressions + ' imp • ❤️ ' + r.likes + ' likes\\nhttps://x.com/bodybasehealth/status/' + r.tweet_id).join('\\n\\n') }}",
+        "additionalFields": {
+          "message_thread_id": 15,
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CRED_ID",
+          "name": "Telegram — Clawd HQ"
+        }
+      }
+    },
+    {
+      "id": "node-no-tweets",
+      "name": "No Tweets to Check",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1080, 440],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Build Time Window", "type": "main", "index": 0 }]]
+    },
+    "Build Time Window": {
+      "main": [[{ "node": "Fetch Unchecked Tweets", "type": "main", "index": 0 }]]
+    },
+    "Fetch Unchecked Tweets": {
+      "main": [[{ "node": "Has Tweets?", "type": "main", "index": 0 }]]
+    },
+    "Has Tweets?": {
+      "main": [
+        [{ "node": "Build Tweet IDs", "type": "main", "index": 0 }],
+        [{ "node": "No Tweets to Check", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Tweet IDs": {
+      "main": [[{ "node": "Fetch Twitter Metrics", "type": "main", "index": 0 }]]
+    },
+    "Fetch Twitter Metrics": {
+      "main": [[{ "node": "Score & Prepare Updates", "type": "main", "index": 0 }]]
+    },
+    "Score & Prepare Updates": {
+      "main": [[{ "node": "Update Supabase Metrics", "type": "main", "index": 0 }]]
+    },
+    "Update Supabase Metrics": {
+      "main": [[{ "node": "Supabase Batch Update", "type": "main", "index": 0 }]]
+    },
+    "Supabase Batch Update": {
+      "main": [[{ "node": "Build Report", "type": "main", "index": 0 }]]
+    },
+    "Build Report": {
+      "main": [[{ "node": "Telegram — Relatório Sistema", "type": "main", "index": 0 }]]
+    },
+    "Telegram — Relatório Sistema": {
+      "main": [[{ "node": "Telegram — Destaque Viral", "type": "main", "index": 0 }]]
+    },
+    "Telegram — Destaque Viral": {
+      "main": [
+        [{ "node": "Telegram — Alerta Viral", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": ["twitter", "analytics"]
+}

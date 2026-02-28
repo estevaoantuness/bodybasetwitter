@@ -7,7 +7,10 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [200, 300],
+      "position": [
+        200,
+        300
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -24,7 +27,10 @@
       "name": "Get Today's Date",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 300],
+      "position": [
+        400,
+        300
+      ],
       "parameters": {
         "jsCode": "const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\nconst yesterday = new Date(Date.now() - 86400000).toISOString();\nreturn [{ json: { hoje, yesterday } }];"
       }
@@ -34,7 +40,10 @@
       "name": "X Search PT-BR",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 0],
+      "position": [
+        700,
+        0
+      ],
       "parameters": {
         "method": "GET",
         "url": "https://api.twitter.com/2/tweets/search/recent",
@@ -85,7 +94,10 @@
       "name": "Filter PT-BR Tweets",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 0],
+      "position": [
+        1000,
+        0
+      ],
       "parameters": {
         "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 100)\n  .sort((a, b) => b.public_metrics.like_count - a.public_metrics.like_count)\n  .slice(0, 5)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'twitter_pt' }));\nreturn [{ json: { tweets_pt: filtered } }];"
       }
@@ -95,7 +107,10 @@
       "name": "Timeline @PeterAttiaMD",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 200],
+      "position": [
+        700,
+        200
+      ],
       "parameters": {
         "method": "GET",
         "url": "https://api.twitter.com/2/users/1386826780/tweets",
@@ -142,7 +157,10 @@
       "name": "Filter Attia Tweets",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 200],
+      "position": [
+        1000,
+        200
+      ],
       "parameters": {
         "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 200)\n  .slice(0, 3)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'attia' }));\nreturn [{ json: { tweets_attia: filtered } }];"
       }
@@ -152,7 +170,10 @@
       "name": "Timeline @hubermanlab",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 400],
+      "position": [
+        700,
+        400
+      ],
       "parameters": {
         "method": "GET",
         "url": "https://api.twitter.com/2/users/815279808/tweets",
@@ -199,7 +220,10 @@
       "name": "Filter Huberman Tweets",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 400],
+      "position": [
+        1000,
+        400
+      ],
       "parameters": {
         "jsCode": "const tweets = $input.first().json?.data || [];\nconst filtered = tweets\n  .filter(t => t.public_metrics?.like_count >= 500)\n  .slice(0, 3)\n  .map(t => ({ text: t.text, likes: t.public_metrics.like_count, source: 'huberman' }));\nreturn [{ json: { tweets_huberman: filtered } }];"
       }
@@ -209,7 +233,10 @@
       "name": "PubMed RSS",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 600],
+      "position": [
+        700,
+        600
+      ],
       "parameters": {
         "method": "GET",
         "url": "https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=longevity+biomarkers+preventive+health&format=rss&limit=5&sort=date",
@@ -228,7 +255,10 @@
       "name": "Parse PubMed RSS",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 600],
+      "position": [
+        1000,
+        600
+      ],
       "parameters": {
         "jsCode": "// Parse RSS items - n8n XML node returns parsed structure\nconst channel = $input.first().json?.rss?.channel || {};\nconst items = Array.isArray(channel.item) ? channel.item : (channel.item ? [channel.item] : []);\nconst parsed = items.slice(0, 5).map(item => ({\n  title: item.title || '',\n  abstract: (item.description || '').replace(/<[^>]*>/g, '').substring(0, 400),\n  url: item.link || '',\n  source: 'pubmed'\n}));\nreturn [{ json: { pubmed: parsed } }];"
       }
@@ -238,7 +268,10 @@
       "name": "Build Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 300],
+      "position": [
+        1300,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "jsCode": "// Collect all items from different branches\nconst allItems = $input.all();\nlet tweets_pt = [], tweets_attia = [], tweets_huberman = [], pubmed = [];\n\nfor (const item of allItems) {\n  if (item.json.tweets_pt) tweets_pt = item.json.tweets_pt;\n  if (item.json.tweets_attia) tweets_attia = item.json.tweets_attia;\n  if (item.json.tweets_huberman) tweets_huberman = item.json.tweets_huberman;\n  if (item.json.pubmed) pubmed = item.json.pubmed;\n}\n\nconst hoje = new Date().toLocaleDateString('pt-BR');\n\nlet context = `## TWITTER PT-BR (top ${tweets_pt.length} por likes)\\n`;\ntweets_pt.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## ATTIA (\\u00faltimas 24h)\\n`;\ntweets_attia.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## HUBERMAN (\\u00faltimas 24h)\\n`;\ntweets_huberman.forEach((t, i) => { context += `${i+1}. [${t.likes} likes]: ${t.text}\\n`; });\n\ncontext += `\\n## PUBMED (recentes)\\n`;\npubmed.forEach((t, i) => { context += `${i+1}. ${t.title}\\n   ${t.abstract}\\n   URL: ${t.url}\\n`; });\n\ncontext += `\\n## DATA\\nHoje: ${hoje}`;\n\nreturn [{ json: { context, hoje: new Date().toISOString().split('T')[0] } }];"
@@ -249,7 +282,10 @@
       "name": "Claude API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1600, 300],
+      "position": [
+        1600,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
@@ -272,7 +308,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 2000,\n  \"system\": \"Voc\\u00ea \\u00e9 o ghostwriter de @bodybasehealth, conta de health-tech focada em sa\\u00fade preventiva e biomarcadores. Tom: direto, baseado em dado, sem vender, sem claim m\\u00e9dico.\\n\\nRegras absolutas:\\n- Nunca inventar estat\\u00edstica. Se usar n\\u00famero, deve vir das fontes fornecidas.\\n- Nunca usar \\\"trata\\\", \\\"cura\\\", \\\"previne\\\" como claim.\\n- M\\u00e1x 280 chars por tweet.\\n- Conectar \\u00e0 BodyBase em no m\\u00e1ximo 1 dos 3 rascunhos, de forma natural.\\n\\nFormato obrigat\\u00f3rio de cada rascunho (framework Tese\\u2192Consequ\\u00eancia\\u2192Prova\\u2192Revela\\u00e7\\u00e3o\\u2192CTA):\\n- Tese: afirma\\u00e7\\u00e3o direta e espec\\u00edfica (n\\u00e3o gen\\u00e9rica)\\n- Consequ\\u00eancia: o que isso muda na vida de quem l\\u00ea\\n- Prova: dado, estudo ou observa\\u00e7\\u00e3o da fonte\\n- Revela\\u00e7\\u00e3o: o insight que a maioria n\\u00e3o sabe\\n- CTA: pergunta de engajamento ou convite (sem link externo nos primeiros 60 dias)\\n\\nRetorna APENAS JSON v\\u00e1lido neste schema:\\n{\\\"drafts\\\": [{\\\"id\\\": 1, \\\"format\\\": \\\"Dado Surpreendente|Opini\\u00e3o Contr\\u00e1ria|Thread|Not\\u00edcia Comentada\\\", \\\"texto\\\": \\\"texto completo do tweet \\u2264280 chars\\\", \\\"char_count\\\": 180, \\\"fonte\\\": \\\"url ou descri\\u00e7\\u00e3o da fonte usada\\\", \\\"horario_sugerido\\\": \\\"08h|12h|18h\\\"}]}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Fontes de hoje:\\n\\n' + $json.context + '\\n\\nGera 3 rascunhos.') }}\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 2000,\n  \"system\": \"Voc\\u00ea \\u00e9 o ghostwriter oficial de @bodybasehealth \\u2014 plataforma brasileira de interpreta\\u00e7\\u00e3o de biomarcadores para longevidade e performance.\\n\\n## IDENTIDADE DA MARCA\\n\\n**Miss\\u00e3o**: Traduzir dados de exames em linguagem de performance \\u2014 para quem quer entender o pr\\u00f3prio corpo com precis\\u00e3o cient\\u00edfica.\\n\\n**O que a BodyBase \\u00c9**: Direta (vai ao dado), calibrada (distingue o que a ci\\u00eancia sabe do que \\u00e9 hip\\u00f3tese), respeitosa (n\\u00e3o assume que o leitor precisa ser convencido a cuidar da sa\\u00fade).\\n\\n**O que a BodyBase N\\u00c3O \\u00c9**: Motivacional gen\\u00e9rico, alarmista, vendedor de produto, m\\u00e9dico digital, guru de biohacking.\\n\\n**Personas**: Profissionais anal\\u00edticos 28-45 anos, alta renda. Conhecem HRV, VO2max, zona 2. Seguem Peter Attia. Querem dados \\u2014 n\\u00e3o querem ser convencidos de que sa\\u00fade importa.\\n\\n**5 Pilares**: Longevidade | Biomarcadores | Performance | Metabolismo | Sono\\n\\n---\\n\\n## RED LINES \\u2014 NUNCA VIOLAR\\n\\n**Verbos proibidos** (nunca usar como claim de sa\\u00fade):\\ntrata / cura / previne / garante / elimina / protege / rejuvenesce / desintoxica\\n\\n**Linguagem aprovada**:\\n\\\"associado a\\\", \\\"correlacionado com\\\", \\\"estudos sugerem\\\", \\\"pode contribuir para\\\", \\\"dados observacionais indicam\\\", \\\"o mecanismo proposto \\u00e9\\\"\\n\\n**Regra de estat\\u00edstica**: Nunca inventar n\\u00famero. Todo n\\u00famero vem das fontes fornecidas. Formato: (Nature Medicine, 2023) / (meta-an\\u00e1lise, Cochrane) / (NHANES 2021-2023)\\n\\n**Regra de causalidade**:\\n- Estudo observacional -> usar \\\"associado a\\\" (NUNCA \\\"causa\\\")\\n- RCT -> pode usar \\\"resultou em\\\" apenas para o desfecho espec\\u00edfico medido\\n- Animal/in vitro -> NUNCA como claim direto; no m\\u00e1ximo \\\"mecanismo proposto\\\"\\n\\n**Regulat\\u00f3rio Brasil \\u2014 PROIBIDO**:\\n- \\\"Nosso exame detecta/diagnostica [doen\\u00e7a X]\\\"\\n- \\\"Com nosso exame voc\\u00ea saber\\u00e1 se tem [condi\\u00e7\\u00e3o Y]\\\"\\n- \\\"Previne [doen\\u00e7a] com nossos exames\\\"\\n- \\\"Resultados garantidos\\\"\\n\\n**Regulat\\u00f3rio Brasil \\u2014 PERMITIDO**:\\n- \\\"Medimos X biomarcador\\\"\\n- \\\"Monitore sua sa\\u00fade\\\"\\n- \\\"Conhe\\u00e7a seus biomarcadores\\\"\\n- \\\"Acompanhe seus resultados ao longo do tempo\\\"\\n\\n---\\n\\n## FORMATOS DE TWEET\\n\\n**Framework base**: Tese -> Consequ\\u00eancia -> Prova -> Revela\\u00e7\\u00e3o -> CTA\\n\\n**Formato 1 \\u2014 Dado Surpreendente**\\n[N\\u00famero ou fato contraintuitivo]\\n[Contexto que explica o dado]\\n[Mecanismo ou causa]\\n[Implica\\u00e7\\u00e3o pr\\u00e1tica]\\n(Fonte, ano)\\n\\n**Formato 2 \\u2014 Opini\\u00e3o Contr\\u00e1ria**\\n[Cren\\u00e7a popular]\\n[Dado que contradiz]\\n[Por que a cren\\u00e7a persiste]\\n[O que os dados realmente dizem]\\n[Conclus\\u00e3o calibrada \\u2014 n\\u00e3o absolutista]\\n\\n**Formato 3 \\u2014 Not\\u00edcia Comentada**\\n[O que o estudo encontrou \\u2014 1 linha]\\n[Por que este estudo importa]\\n[Limita\\u00e7\\u00e3o principal]\\n[O que isso muda na pr\\u00e1tica]\\n(Revista, m\\u00eas/ano)\\n\\n**Formato 4 \\u2014 Thread (apenas o gancho)**\\n[Promessa clara do que a thread entrega]\\n[Por que vale ler]\\nThread: [n] tweets\\n\\n**EXEMPLOS RUINS** (nunca imitar):\\n- \\\"VO2max \\u00e9 super importante para sua sa\\u00fade! Especialistas recomendam exerc\\u00edcio todo dia!\\\"\\n- \\\"INCR\\u00cdVEL! Cientistas descobriram a chave para viver mais!\\\"\\n- \\\"Colesterol n\\u00e3o \\u00e9 t\\u00e3o ruim assim? A m\\u00eddia distorceu tudo!\\\"\\n\\n**EXEMPLOS BONS**:\\n- \\\"Pessoas com VO2max no quartil superior vivem em m\\u00e9dia 5 anos a mais \\u2014 independente de IMC. N\\u00e3o \\u00e9 o peso que prediz longevidade. \\u00c9 a capacidade cardiovascular. (JAMA, 2018 \\u2014 n=122.000)\\\"\\n- \\\"LDL-C e LDL-P medem coisas diferentes. LDL-C mede concentra\\u00e7\\u00e3o. LDL-P conta part\\u00edculas. Voc\\u00ea pode ter LDL-C normal com LDL-P elevado. A maioria dos exames no Brasil s\\u00f3 mede LDL-C. (MESA Study, 2005)\\\"\\n\\n---\\n\\n## CRIT\\u00c9RIO DE QUALIDADE DE FONTES\\n\\nTier A (usar com confian\\u00e7a): Meta-an\\u00e1lise de RCTs, RCT n>500, NHANES, UK Biobank, Framingham\\nLinguagem: \\\"Evid\\u00eancias consistentes associam X a Y\\\"\\n\\nTier B (usar com contexto): RCT n<500, observacional n>10.000\\nLinguagem: \\\"Um estudo com N participantes encontrou...\\\"\\n\\nTier C (usar com disclaimer): Estudo piloto, observacional menor\\nLinguagem: \\\"Dados preliminares sugerem \\u2014 requer confirma\\u00e7\\u00e3o\\\"\\n\\nTier D \\u2014 NUNCA como claim direto: Animais, in vitro\\nApenas: \\\"mecanismo biol\\u00f3gico proposto, estudado em modelos animais\\\"\\n\\n**Checklist mental antes de escrever**:\\n1. O n\\u00famero vem das fontes fornecidas hoje?\\n2. O tweet distingue correla\\u00e7\\u00e3o de causalidade?\\n3. Algum verbo proibido presente?\\n4. Algum claim de diagn\\u00f3stico ou promessa de resultado?\\n\\n---\\n\\n## OUTPUT OBRIGAT\\u00d3RIO\\n\\nRetorna APENAS JSON v\\u00e1lido neste schema:\\n{\\\"drafts\\\": [{\\\"id\\\": 1, \\\"format\\\": \\\"Dado Surpreendente|Opini\\u00e3o Contr\\u00e1ria|Thread|Not\\u00edcia Comentada\\\", \\\"texto\\\": \\\"texto do tweet max 280 chars\\\", \\\"char_count\\\": 180, \\\"fonte\\\": \\\"url ou descri\\u00e7\\u00e3o da fonte\\\", \\\"horario_sugerido\\\": \\\"08h|12h|18h\\\"}]}\\n\\nRegras:\\n- 3 rascunhos com formatos DIFERENTES\\n- Max 280 chars por tweet. Contar rigorosamente.\\n- No m\\u00e1ximo 1 rascunho menciona a BodyBase (de forma natural, n\\u00e3o vendendo)\\n- CTA: pergunta ao leitor ou \\\"Salva esse tweet\\\" \\u2014 sem link externo\\n- Sem emojis desnecess\\u00e1rios\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Fontes de hoje:\\n\\n' + $json.context + '\\n\\nGera 3 rascunhos.') }}\n    }\n  ]\n}",
         "options": {}
       }
     },
@@ -281,7 +317,10 @@
       "name": "Parse Claude Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1900, 300],
+      "position": [
+        1900,
+        300
+      ],
       "parameters": {
         "jsCode": "const responseText = $input.first().json.content[0].text;\nlet drafts;\ntry {\n  // Handle case where Claude wraps in markdown code blocks\n  const cleaned = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  drafts = JSON.parse(cleaned).drafts;\n} catch(e) {\n  // Fallback: extract JSON manually\n  const match = responseText.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    drafts = JSON.parse(match[0]).drafts;\n  } else {\n    throw new Error('Could not parse Claude response: ' + responseText.substring(0, 200));\n  }\n}\nreturn [{ json: { drafts, context: $('Build Context').item.json.context, hoje: $('Build Context').item.json.hoje } }];"
       }
@@ -291,7 +330,10 @@
       "name": "Validate Chars",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2200, 300],
+      "position": [
+        2200,
+        300
+      ],
       "parameters": {
         "jsCode": "const { drafts, context, hoje } = $input.first().json;\nconst validated = drafts.map(d => {\n  const count = d.texto.length;\n  const flag = count > 280 ? '\\u26a0\\ufe0f ' : '';\n  return {\n    ...d,\n    texto: count > 280 ? d.texto.substring(0, 277) + '...' : d.texto,\n    char_count: Math.min(count, 280),\n    char_flag: flag\n  };\n});\nreturn [{ json: { drafts: validated, context, hoje } }];"
       }
@@ -301,7 +343,10 @@
       "name": "Format Telegram Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2500, 300],
+      "position": [
+        2500,
+        300
+      ],
       "parameters": {
         "jsCode": "const { drafts, hoje } = $input.first().json;\nconst data = new Date().toLocaleDateString('pt-BR');\n\nlet msg = `\\ud83d\\udc26 *TWEETS DO DIA \\u2014 ${data}*\\n\\n`;\n\ndrafts.forEach((d, i) => {\n  msg += `\\u2501\\u2501\\u2501 TWEET ${d.id} (${d.horario_sugerido}) \\u2014 ${d.format} \\u2501\\u2501\\u2501\\n`;\n  msg += `${d.char_flag}${d.texto}\\n`;\n  msg += `\\ud83d\\udcca ${d.char_count} chars | Fonte: ${d.fonte}\\n\\n`;\n});\n\nmsg += `---\\n\\u2705 aprova \\\\[1,2,3\\\\]  |  \\u270f\\ufe0f edita N: \\\\[texto\\\\]  |  \\u274c ignore`;\n\nreturn [{ json: { message: msg, drafts: $input.first().json.drafts, context: $input.first().json.context, hoje } }];"
       }
@@ -311,7 +356,10 @@
       "name": "Send to Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2800, 300],
+      "position": [
+        2800,
+        300
+      ],
       "parameters": {
         "operation": "sendMessage",
         "chatId": "={{ $vars.TELEGRAM_CHAT_ID }}",
@@ -333,7 +381,10 @@
       "name": "Save to Supabase",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3100, 300],
+      "position": [
+        3100,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ $vars.SUPABASE_URL }}/rest/v1/tw_daily_research",

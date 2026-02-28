@@ -1,8 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { Draft } from '../types'
 import { log } from './logger'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
 const SYSTEM_PROMPT = `Você é o ghostwriter do @bodybasehealth no Twitter/X.
 
@@ -39,27 +40,16 @@ export async function generateDrafts(): Promise<Draft[]> {
   const today = new Date().toISOString().split('T')[0]
   log('[claude:generateDrafts:start]', { date: today })
 
-  const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 2000,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: `Gere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.`,
-      },
-    ],
+  const prompt = `${SYSTEM_PROMPT}\n\nGere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.`
+
+  const result = await model.generateContent(prompt)
+  const rawText = result.response.text()
+
+  const usageMeta = result.response.usageMetadata
+  log('[claude:generateDrafts:done]', {
+    input_tokens: usageMeta?.promptTokenCount ?? 0,
+    output_tokens: usageMeta?.candidatesTokenCount ?? 0,
   })
-
-  const inputTokens = message.usage.input_tokens
-  const outputTokens = message.usage.output_tokens
-  log('[claude:generateDrafts:done]', { input_tokens: inputTokens, output_tokens: outputTokens })
-
-  const firstBlock = message.content[0]
-  if (!firstBlock || firstBlock.type !== 'text') {
-    throw new Error('[claude:generateDrafts] unexpected response: no text block')
-  }
-  const rawText = firstBlock.text
 
   // Parse JSON — aceita markdown code block
   const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, rawText]

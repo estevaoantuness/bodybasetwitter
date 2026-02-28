@@ -44,7 +44,7 @@ curl -s -X POST \
 - **Runtime:** Node.js 20+ / TypeScript strict
 - **Framework:** Express
 - **Cron:** node-cron (07:00 BRT = 10:00 UTC)
-- **AI:** Anthropic claude-opus-4-6
+- **AI:** Google Gemini (gemini-2.0-flash via @google/generative-ai)
 - **DB:** Supabase (mesmo projeto do BodyBase: nklnhazqmxmetrumovaf)
 - **Twitter:** twitter-api-v2
 - **Telegram:** fetch nativo (Bot API)

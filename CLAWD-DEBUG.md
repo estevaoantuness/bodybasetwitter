@@ -8,19 +8,16 @@ Manual de operação para o Clawd debuggar, monitorar e intervir no servidor de 
 
 ```bash
 # Últimas 100 linhas
-railway logs --tail 100
+coolify logs --tail 100   # ou via dashboard: coolify.pangeia.cloud → bodybasetwitter → Logs
 
 # Filtrar só o cron diário
-railway logs --tail 500 | grep "daily:"
+coolify logs --tail 500 | grep "daily:"
 
 # Filtrar só erros de comandos
-railway logs --tail 500 | grep "cmd:error"
+coolify logs --tail 500 | grep "cmd:error"
 
 # Filtrar só tweets postados
-railway logs --tail 500 | grep "cmd:tweet"
-
-# Ver logs desde o início do dia
-railway logs --since 2h
+coolify logs --tail 500 | grep "cmd:tweet"
 ```
 
 Todos os logs são JSON estruturado. Campos fixos: `ts` (ISO 8601), `step`. Campos adicionais variam por step.
@@ -39,7 +36,7 @@ Todos os logs são JSON estruturado. Campos fixos: `ts` (ISO 8601), `step`. Camp
 | `[daily:saved]` | Drafts salvos no Supabase (tw_daily_research) |
 | `[daily:done]` | Cron concluído com sucesso |
 | `[daily:error]` | Falha no cron — campos: `message`, `stack` |
-| `[claude:generateDrafts:start]` | Iniciando chamada à API Anthropic |
+| `[claude:generateDrafts:start]` | Iniciando chamada à API Google Gemini |
 | `[claude:generateDrafts:done]` | Resposta recebida — campos: `input_tokens`, `output_tokens` |
 | `[cmd:received]` | Mensagem recebida do Telegram — campos: `route`, `chatId` |
 | `[cmd:file]` | Buscando file_path no Telegram |
@@ -68,17 +65,17 @@ Todos os logs são JSON estruturado. Campos fixos: `ts` (ISO 8601), `step`. Camp
 
 | Erro no log | Causa provável | Fix |
 |-------------|---------------|-----|
-| `[cmd:media]` status 401 | `TWITTER_ACCESS_TOKEN` inválido ou expirado | Regenerar no Twitter Dev Portal → Railway variables |
+| `[cmd:media]` status 401 | `TWITTER_ACCESS_TOKEN` inválido ou expirado | Regenerar no Twitter Dev Portal → Coolify env vars |
 | `[cmd:media]` status 403 | App sem permissão de Write | Twitter Dev Portal → App Settings → App Permissions → Read and Write |
 | `[cmd:tweet]` status 403 "duplicate content" | Texto idêntico a tweet recente | Editar o draft antes de aprovar: `edita N: novo texto` |
 | `[cmd:tweet]` status 429 | Rate limit do Twitter atingido | Aguardar 15 minutos e tentar novamente |
-| `[daily:claude]` status 401 | `ANTHROPIC_API_KEY` inválida | Regenerar em console.anthropic.com → Railway variables |
-| `[daily:claude]` status 529 | Anthropic overloaded | Aguardar — cron tenta novamente no dia seguinte |
+| `[daily:claude]` status 401 | `GEMINI_API_KEY` inválida | Regenerar em aistudio.google.com → Coolify env vars |
+| `[daily:claude]` status 429 | Gemini rate limit atingido | Aguardar — cron tenta novamente no dia seguinte |
 | `[cmd:file]` status 400 | `file_id` expirado (foto enviada há muito tempo) | Reenviar a foto |
 | `[cmd:draft]` not found | Draft N não existe para hoje | Verificar número — só existem 1, 2, 3 |
 | `[supabase:getDraft]` not found | Cron não rodou hoje ou falhou | Verificar `[daily:error]` nos logs |
-| `/health` retorna 503 | App em shutdown ou crash loop | `railway logs --tail 200` para ver causa raiz |
-| Webhook Telegram sem resposta | URL do webhook incorreta ou Railway offline | Re-registrar webhook (ver seção 4) |
+| `/health` retorna 503 | App em shutdown ou crash loop | Coolify dashboard → bodybasetwitter → Logs |
+| Webhook Telegram sem resposta | URL do webhook incorreta ou Coolify offline | Re-registrar webhook (ver seção 4) |
 
 ---
 
@@ -86,7 +83,7 @@ Todos os logs são JSON estruturado. Campos fixos: `ts` (ISO 8601), `step`. Camp
 
 ### Re-registrar webhook do Telegram
 ```bash
-curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://SEU_RAILWAY_URL/telegram/webhook"
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://bcogocwo4gssw4o4ccs0ssk8.pangeia.cloud/telegram/webhook"
 ```
 
 ### Verificar webhook atual
@@ -94,15 +91,15 @@ curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://S
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
 ```
 
-### Ver variáveis de ambiente no Railway
+### Forçar redeploy via Coolify API
 ```bash
-railway variables
+curl -s -X POST \
+  -H "Authorization: Bearer $COOLIFY_API_KEY" \
+  "https://coolify.pangeia.cloud/api/v1/deploy?uuid=bcogocwo4gssw4o4ccs0ssk8&force=false"
 ```
 
-### Forçar restart do serviço
-```bash
-railway redeploy
-```
+### Ver logs no Coolify
+Acesse: https://coolify.pangeia.cloud → projeto BodyBase → bodybasetwitter → Logs
 
 ### Verificar tabelas Supabase
 ```sql

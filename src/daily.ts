@@ -26,6 +26,8 @@ async function runDaily(): Promise<void> {
   }
 }
 
+export { runDaily }
+
 // 10:00 UTC = 07:00 BRT
 export function registerDailyCron(): void {
   cron.schedule('0 10 * * *', runDaily, { timezone: 'UTC' })

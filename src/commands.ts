@@ -4,6 +4,7 @@ import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from '.
 import { uploadMedia, postTweet } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft } from './lib/supabase'
 import { chat } from './lib/claude'
+import { runDaily } from './daily'
 import { log } from './lib/logger'
 
 export const commandsRouter = Router()
@@ -35,6 +36,11 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
   // "ignore"
   if (/^ignore$/i.test(text)) {
     return { type: 'ignore' }
+  }
+
+  // "gera"
+  if (/^gera$/i.test(text)) {
+    return { type: 'gera' }
   }
 
   return { type: 'unknown' }
@@ -106,6 +112,14 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
       case 'ignore': {
         await sendMessage(chatId, '❌ Rascunhos de hoje descartados.')
         log('[cmd:ignore]')
+        break
+      }
+
+      case 'gera': {
+        await sendMessage(chatId, '⏳ Gerando rascunhos...')
+        log('[cmd:gera:start]')
+        await runDaily()
+        log('[cmd:gera:done]')
         break
       }
 

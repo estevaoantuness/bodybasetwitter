@@ -50,11 +50,57 @@ export async function chat(userMessage: string): Promise<string> {
   return reply
 }
 
+async function fetchHealthNews(): Promise<string> {
+  // Source 1: Reddit r/longevity+biohacking (JSON API, cloud-friendly)
+  try {
+    const res = await fetch(
+      'https://www.reddit.com/r/longevity+biohacking/.json?limit=8&sort=hot',
+      { headers: { 'User-Agent': 'bodybasetwitter/1.0' } }
+    )
+    if (res.ok) {
+      const data = await res.json() as { data: { children: { data: { title: string; score: number } }[] } }
+      const titles = data.data.children
+        .filter(p => p.data.score > 10)
+        .slice(0, 5)
+        .map(p => `- ${p.data.title}`)
+      if (titles.length > 0) {
+        log('[claude:news]', { count: titles.length, source: 'reddit' })
+        return titles.join('\n')
+      }
+    }
+  } catch { /* fallthrough */ }
+
+  // Source 2: PubMed RSS (academic, very cloud-friendly)
+  try {
+    const res = await fetch(
+      'https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=longevity+biomarkers+health&limit=5&format=abstract'
+    )
+    if (res.ok) {
+      const xml = await res.text()
+      const titles = [...xml.matchAll(/<title>(.+?)<\/title>/g)]
+        .slice(1, 6)
+        .map(m => `- ${m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<')}`)
+      if (titles.length > 0) {
+        log('[claude:news]', { count: titles.length, source: 'pubmed' })
+        return titles.join('\n')
+      }
+    }
+  } catch { /* fallthrough */ }
+
+  log('[claude:news:none]', {})
+  return ''
+}
+
 export async function generateDrafts(): Promise<Draft[]> {
   const today = new Date().toISOString().split('T')[0]
   log('[claude:generateDrafts:start]', { date: today })
 
-  const prompt = `${SYSTEM_PROMPT}\n\nGere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.`
+  const news = await fetchHealthNews()
+  const newsContext = news
+    ? `\n\nTópicos em alta no mundo health tech (use como inspiração/contexto):\n${news}`
+    : ''
+
+  const prompt = `${SYSTEM_PROMPT}\n\nGere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.${newsContext}`
 
   const result = await model.generateContent(prompt)
   const rawText = result.response.text()

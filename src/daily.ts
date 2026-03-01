@@ -4,15 +4,22 @@ import { sendDrafts, alertSistema } from './lib/telegram'
 import { saveResearch } from './lib/supabase'
 import { log } from './lib/logger'
 
-async function runDaily(): Promise<void> {
+let isRunning = false
+
+async function runDaily(slot?: 'morning' | 'evening'): Promise<void> {
+  if (isRunning) {
+    log('[daily:skip]', { reason: 'already_running', slot: slot ?? 'manual' })
+    return
+  }
+  isRunning = true
   const today = new Date().toISOString().split('T')[0]
-  log('[daily:start]', { date: today })
+  log('[daily:start]', { date: today, slot: slot ?? 'manual' })
 
   try {
     const drafts = await generateDrafts()
     log('[daily:claude]', { count: drafts.length })
 
-    await sendDrafts(drafts)
+    await sendDrafts(drafts, slot)
     log('[daily:telegram]', { count: drafts.length })
 
     await saveResearch(today, drafts)
@@ -23,13 +30,16 @@ async function runDaily(): Promise<void> {
     const err = e instanceof Error ? e : new Error(String(e))
     log('[daily:error]', { message: err.message, stack: err.stack })
     await alertSistema(`[daily:error] ${err.message}`)
+  } finally {
+    isRunning = false
   }
 }
 
 export { runDaily }
 
-// 10:00 UTC = 07:00 BRT
+// 10:00 UTC = 07:00 BRT | 20:00 UTC = 17:00 BRT
 export function registerDailyCron(): void {
-  cron.schedule('0 10 * * *', runDaily, { timezone: 'UTC' })
-  log('[daily:cron:registered]', { schedule: '0 10 * * * (10:00 UTC / 07:00 BRT)' })
+  cron.schedule('0 10 * * *', () => runDaily('morning'), { timezone: 'UTC' })
+  cron.schedule('0 20 * * *', () => runDaily('evening'), { timezone: 'UTC' })
+  log('[daily:cron:registered]', { schedules: ['0 10 * * * (07:00 BRT)', '0 20 * * * (17:00 BRT)'] })
 }

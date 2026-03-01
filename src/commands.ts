@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet } from './lib/twitter'
-import { getDraft, saveTweet, updateDraft, checkResearch } from './lib/supabase'
+import { getDraft, saveTweet, updateDraft } from './lib/supabase'
 import { chat } from './lib/claude'
 import { runDaily } from './daily'
 import { log } from './lib/logger'
@@ -38,10 +38,9 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
     return { type: 'ignore' }
   }
 
-  // "gera" or "gera force"
-  const geraMatch = text.match(/^gera(\s+force)?$/i)
-  if (geraMatch) {
-    return { type: 'gera', force: !!geraMatch[1] }
+  // "gera"
+  if (/^gera$/i.test(text)) {
+    return { type: 'gera' }
   }
 
   return { type: 'unknown' }
@@ -137,16 +136,8 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
       }
 
       case 'gera': {
-        if (!route.force) {
-          const exists = await checkResearch(today)
-          if (exists) {
-            await sendMessage(chatId, '⚠️ Já existem rascunhos para hoje.\nPara sobrescrever, envie <code>gera force</code>')
-            log('[cmd:gera:blocked]', { reason: 'drafts exist' })
-            break
-          }
-        }
         await sendMessage(chatId, '⏳ Gerando rascunhos...')
-        log('[cmd:gera:start]', { force: route.force })
+        log('[cmd:gera:start]', {})
         await runDaily()
         log('[cmd:gera:done]')
         break

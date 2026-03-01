@@ -24,8 +24,15 @@ export async function alertSistema(message: string): Promise<void> {
   await sendMessage(chatId, `🚨 <b>bodybasetwitter alert</b>\n\n${message}`)
 }
 
-export async function sendDrafts(drafts: Array<{ num: number; texto: string; format: string }>): Promise<void> {
+export async function sendDrafts(
+  drafts: Array<{ num: number; texto: string; format: string }>,
+  slot?: 'morning' | 'evening'
+): Promise<void> {
   const chatId = process.env.TELEGRAM_CHAT_ID!
+  const header = slot === 'morning' ? '🌅 <b>Rascunhos da manhã</b>'
+    : slot === 'evening' ? '🌆 <b>Rascunhos da tarde</b>'
+    : '📝 <b>Novos rascunhos</b>'
+  await sendMessage(chatId, header)
   for (const draft of drafts) {
     const formatTag = draft.format === 'image' ? '🖼 [com imagem]' : '📝 [texto]'
     const msg = `${formatTag} <b>Draft ${draft.num}</b>\n\n${draft.texto}\n\n` +

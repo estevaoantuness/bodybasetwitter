@@ -3,6 +3,7 @@ import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft } from './lib/supabase'
+import { chat } from './lib/claude'
 import { log } from './lib/logger'
 
 export const commandsRouter = Router()
@@ -109,7 +110,12 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
       }
 
       case 'unknown': {
-        log('[cmd:unknown]', { text: msg.text?.slice(0, 50) })
+        const userText = msg.text?.trim()
+        if (userText) {
+          log('[cmd:chat]', { text: userText.slice(0, 50) })
+          const reply = await chat(userText)
+          await sendMessage(chatId, reply)
+        }
         break
       }
     }

@@ -41,5 +41,5 @@ export type CommandRoute =
   | { type: 'text_approve'; num: number }
   | { type: 'edit'; num: number; newText: string }
   | { type: 'ignore' }
-  | { type: 'gera' }
+  | { type: 'gera'; force: boolean }
   | { type: 'unknown' }

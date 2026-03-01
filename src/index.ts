@@ -1,6 +1,7 @@
 import express from 'express'
 import { commandsRouter } from './commands'
 import { registerDailyCron } from './daily'
+import { alertSistema } from './lib/telegram'
 import { log } from './lib/logger'
 
 const PORT = process.env.PORT ?? 3000
@@ -17,4 +18,5 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, () => {
   log('[server:start]', { port: PORT })
   registerDailyCron()
+  alertSistema('🚀 bodybasetwitter iniciado / reiniciado.').catch(() => {})
 })

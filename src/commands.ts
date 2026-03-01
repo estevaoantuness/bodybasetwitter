@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet } from './lib/twitter'
-import { getDraft, saveTweet, updateDraft } from './lib/supabase'
+import { getDraft, saveTweet, updateDraft, checkResearch } from './lib/supabase'
 import { chat } from './lib/claude'
 import { runDaily } from './daily'
 import { log } from './lib/logger'
@@ -38,9 +38,10 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
     return { type: 'ignore' }
   }
 
-  // "gera"
-  if (/^gera$/i.test(text)) {
-    return { type: 'gera' }
+  // "gera" or "gera force"
+  const geraMatch = text.match(/^gera(\s+force)?$/i)
+  if (geraMatch) {
+    return { type: 'gera', force: !!geraMatch[1] }
   }
 
   return { type: 'unknown' }
@@ -55,6 +56,23 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
     return
   }
 
+  // Guard 1: secret token
+  const secretToken = process.env.TELEGRAM_SECRET_TOKEN
+  if (secretToken) {
+    const incoming = req.headers['x-telegram-bot-api-secret-token']
+    if (incoming !== secretToken) {
+      res.sendStatus(200)
+      return
+    }
+  }
+
+  // Guard 2: chat ID
+  const allowedChatId = parseInt(process.env.TELEGRAM_CHAT_ID!)
+  if (msg.chat.id !== allowedChatId) {
+    res.sendStatus(200)
+    return
+  }
+
   const chatId = msg.chat.id
   const today = new Date().toISOString().split('T')[0]
   const route = parseRoute(msg)
@@ -62,6 +80,9 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
 
   // Respond 200 immediately so Telegram doesn't retry
   res.sendStatus(200)
+
+  // tweetId declared here so catch can detect orphan tweets
+  let tweetId: string | null = null
 
   try {
     switch (route.type) {
@@ -80,7 +101,7 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         const draft = await getDraft(route.num, today)
         log('[cmd:draft]', { num: route.num, texto: draft.texto.slice(0, 50) })
 
-        const tweetId = await postTweet(draft.texto, mediaId)
+        tweetId = await postTweet(draft.texto, mediaId)
         log('[cmd:tweet]', { tweetId })
 
         await saveTweet(tweetId, draft.texto, 'image')
@@ -93,7 +114,7 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         const draft = await getDraft(route.num, today)
         log('[cmd:draft]', { num: route.num, texto: draft.texto.slice(0, 50) })
 
-        const tweetId = await postTweet(draft.texto)
+        tweetId = await postTweet(draft.texto)
         log('[cmd:tweet]', { tweetId })
 
         await saveTweet(tweetId, draft.texto, 'text')
@@ -116,8 +137,16 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
       }
 
       case 'gera': {
+        if (!route.force) {
+          const exists = await checkResearch(today)
+          if (exists) {
+            await sendMessage(chatId, '⚠️ Já existem rascunhos para hoje.\nPara sobrescrever, envie <code>gera force</code>')
+            log('[cmd:gera:blocked]', { reason: 'drafts exist' })
+            break
+          }
+        }
         await sendMessage(chatId, '⏳ Gerando rascunhos...')
-        log('[cmd:gera:start]')
+        log('[cmd:gera:start]', { force: route.force })
         await runDaily()
         log('[cmd:gera:done]')
         break
@@ -135,7 +164,11 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
     }
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e))
-    log('[cmd:error]', { route: route.type, message: err.message })
-    await alertSistema(`cmd:${route.type} → ${err.message}`)
+    log('[cmd:error]', { route: route.type, message: err.message, tweetId })
+    if (tweetId) {
+      await alertSistema(`⚠️ TWEET ÓRFÃO: postado no Twitter (ID: ${tweetId}), mas falhou ao salvar no Supabase → ${err.message}`)
+    } else {
+      await alertSistema(`cmd:${route.type} → ${err.message}`)
+    }
   }
 })

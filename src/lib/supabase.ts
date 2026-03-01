@@ -60,6 +60,15 @@ export async function saveResearch(date: string, drafts: Draft[]): Promise<void>
   log('[supabase:saveResearch]', { date, count: drafts.length })
 }
 
+export async function checkResearch(date: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('tw_daily_research')
+    .select('date')
+    .eq('date', date)
+    .maybeSingle()
+  return data !== null
+}
+
 export async function updateDraft(num: number, newText: string, date: string): Promise<void> {
   const { data, error: fetchError } = await supabase
     .from('tw_daily_research')

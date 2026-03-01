@@ -7,8 +7,6 @@ import { log } from './lib/logger'
 
 export const commandsRouter = Router()
 
-const TWITTER_TOPIC_ID = 16
-
 function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
   // Photo with caption "aprova N"
   if (msg.photo && msg.caption) {
@@ -46,12 +44,6 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
 
   const msg = update.message
   if (!msg) {
-    res.sendStatus(200)
-    return
-  }
-
-  // Only handle messages from the Twitter topic (thread 16)
-  if (msg.message_thread_id !== TWITTER_TOPIC_ID) {
     res.sendStatus(200)
     return
   }
@@ -105,13 +97,13 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
 
       case 'edit': {
         await updateDraft(route.num, route.newText, today)
-        await sendMessage(chatId, TWITTER_TOPIC_ID, `✏️ Draft ${route.num} atualizado:\n\n${route.newText}`)
+        await sendMessage(chatId, `✏️ Draft ${route.num} atualizado:\n\n${route.newText}`)
         log('[cmd:edit]', { num: route.num })
         break
       }
 
       case 'ignore': {
-        await sendMessage(chatId, TWITTER_TOPIC_ID, '❌ Rascunhos de hoje descartados.')
+        await sendMessage(chatId, '❌ Rascunhos de hoje descartados.')
         log('[cmd:ignore]')
         break
       }

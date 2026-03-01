@@ -18,5 +18,8 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, () => {
   log('[server:start]', { port: PORT })
   registerDailyCron()
-  alertSistema('🚀 bodybasetwitter iniciado / reiniciado.').catch(() => {})
+  // Delay alert 15s: if process crashes in a loop, it dies before alerting → no Telegram spam
+  setTimeout(() => {
+    alertSistema('🚀 bodybasetwitter iniciado / reiniciado.').catch(() => {})
+  }, 15_000)
 })

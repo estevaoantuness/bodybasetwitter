@@ -44,7 +44,7 @@ curl -s -X POST \
 - **Runtime:** Node.js 20+ / TypeScript strict
 - **Framework:** Express
 - **Cron:** node-cron (07:00 BRT = 10:00 UTC)
-- **AI:** Google Gemini (gemini-2.0-flash via @google/generative-ai)
+- **AI:** Google Gemini (gemini-2.5-flash via @google/generative-ai)
 - **DB:** Supabase (mesmo projeto do BodyBase: nklnhazqmxmetrumovaf)
 - **Twitter:** twitter-api-v2
 - **Telegram:** fetch nativo (Bot API)
@@ -111,6 +111,14 @@ TWITTER_API_SECRET=
 TWITTER_ACCESS_TOKEN=
 TWITTER_ACCESS_TOKEN_SECRET=
 ```
+
+## WORKFLOW DE COMMIT E DEPLOY (OBRIGATÓRIO)
+
+**Sempre que fizer qualquer mudança de código:**
+1. Commitar automaticamente — **sem pedir confirmação ao usuário**
+2. Push para `main` — **sem pedir confirmação ao usuário**
+3. Push dispara auto-deploy no Coolify (~2min)
+4. Se o deploy não atualizar automaticamente, triggar via API (ver seção DEPLOY)
 
 ## DEV WORKFLOW
 

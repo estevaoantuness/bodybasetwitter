@@ -1,7 +1,7 @@
 export interface Draft {
   num: number
   texto: string
-  format: 'text' | 'image'
+  format: 'text' | 'image' | 'thread' | 'poll'
   date: string // YYYY-MM-DD
 }
 

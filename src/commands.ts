@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
-import { uploadMedia, postTweet } from './lib/twitter'
+import { uploadMedia, postTweet, postThread, postPoll } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft } from './lib/supabase'
 import { chat } from './lib/claude'
 import { runDaily } from './daily'
@@ -111,12 +111,25 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
 
       case 'text_approve': {
         const draft = await getDraft(route.num, today)
-        log('[cmd:draft]', { num: route.num, texto: draft.texto.slice(0, 50) })
+        log('[cmd:draft]', { num: route.num, format: draft.format, texto: draft.texto.slice(0, 50) })
 
-        tweetId = await postTweet(draft.texto)
-        log('[cmd:tweet]', { tweetId })
+        if (draft.format === 'thread') {
+          const tweets = draft.texto.split('\n---\n').filter(t => t.trim())
+          tweetId = await postThread(tweets)
+          log('[cmd:thread]', { tweetId, count: tweets.length })
+          await saveTweet(tweetId, draft.texto, 'thread')
+        } else if (draft.format === 'poll') {
+          const [question, optionsBlock] = draft.texto.split('\n---opcoes---\n')
+          const options = (optionsBlock ?? '').trim().split('\n').filter(Boolean)
+          tweetId = await postPoll(question.trim(), options)
+          log('[cmd:poll]', { tweetId })
+          await saveTweet(tweetId, draft.texto, 'poll')
+        } else {
+          tweetId = await postTweet(draft.texto)
+          log('[cmd:tweet]', { tweetId })
+          await saveTweet(tweetId, draft.texto, draft.format)
+        }
 
-        await saveTweet(tweetId, draft.texto, 'text')
         await confirm(chatId, tweetId)
         log('[cmd:confirm]', { tweetId })
         break

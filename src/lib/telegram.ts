@@ -34,8 +34,28 @@ export async function sendDrafts(
     : '📝 <b>Novos rascunhos</b>'
   await sendMessage(chatId, header)
   for (const draft of drafts) {
-    const formatTag = draft.format === 'image' ? '🖼 [com imagem]' : '📝 [texto]'
-    const msg = `${formatTag} <b>Draft ${draft.num}</b>\n\n${draft.texto}\n\n` +
+    let formatTag: string
+    let preview: string
+
+    if (draft.format === 'thread') {
+      const tweets = draft.texto.split('\n---\n').filter(t => t.trim())
+      const hook = tweets[0] ?? ''
+      formatTag = `🧵 [thread · ${tweets.length} tweets]`
+      preview = `<b>Hook:</b>\n${hook}\n\n<i>+ ${tweets.length - 1} tweets na thread</i>`
+    } else if (draft.format === 'poll') {
+      const [question, optionsBlock] = draft.texto.split('\n---opcoes---\n')
+      const options = (optionsBlock ?? '').trim().split('\n').filter(Boolean)
+      formatTag = '📊 [poll]'
+      preview = `<b>Pergunta:</b> ${question}\n${options.map(o => `• ${o}`).join('\n')}`
+    } else if (draft.format === 'image') {
+      formatTag = '🖼 [com imagem]'
+      preview = draft.texto
+    } else {
+      formatTag = '📝 [texto]'
+      preview = draft.texto
+    }
+
+    const msg = `${formatTag} <b>Draft ${draft.num}</b>\n\n${preview}\n\n` +
       `Para aprovar: <code>aprova ${draft.num}</code>\n` +
       `Para aprovar com foto: envie a foto com caption <code>aprova ${draft.num}</code>\n` +
       `Para editar: <code>edita ${draft.num}: novo texto aqui</code>`

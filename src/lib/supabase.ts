@@ -127,15 +127,30 @@ export async function saveTrend(item: Omit<TrendItem, 'id'>): Promise<string | u
 }
 
 export async function getTopTrends(limit = 3): Promise<TrendItem[]> {
+  // Last 24h only
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('tw_trends')
     .select('*')
+    .gte('detected_at', since)
     .order('relevance_score', { ascending: false })
     .order('detected_at', { ascending: false })
-    .limit(limit)
+    .limit(limit * 4) // fetch more to dedup
 
   if (error || !data) return []
-  return data as TrendItem[]
+
+  // Dedup by normalized title (same story saved in multiple cycles)
+  const seen = new Set<string>()
+  const deduped: TrendItem[] = []
+  for (const item of data as TrendItem[]) {
+    const key = item.title.toLowerCase().slice(0, 60)
+    if (!seen.has(key)) {
+      seen.add(key)
+      deduped.push(item)
+    }
+    if (deduped.length >= limit) break
+  }
+  return deduped
 }
 
 export async function markTrendUsed(id: string): Promise<void> {

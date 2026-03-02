@@ -5,7 +5,7 @@ import { uploadMedia, postTweet, postThread, postPoll } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft, getTopTrends } from './lib/supabase'
 import { scoreTweet } from './lib/scorer'
 import { runDaily } from './daily'
-import { setAutoPublish, isAutoPublishEnabled } from './trends'
+import { setAutoPublish, isAutoPublishEnabled, runTrendCycle } from './trends'
 import { processMessage, resetSession } from './lib/agent'
 import { log } from './lib/logger'
 
@@ -124,6 +124,14 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         log('[cmd:generate:start]')
         await runDaily()
         log('[cmd:generate:done]')
+        break
+      }
+
+      case 'refresh_trends': {
+        await sendMessage(chatId, '🔄 Buscando trends agora em todas as fontes...')
+        log('[cmd:refresh_trends:start]')
+        await runTrendCycle()
+        log('[cmd:refresh_trends:done]')
         break
       }
 

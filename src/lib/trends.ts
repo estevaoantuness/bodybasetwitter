@@ -2,21 +2,33 @@ import { TrendItem } from '../types'
 import { log } from './logger'
 
 async function fetchReddit(): Promise<TrendItem[]> {
+  // Rotate between hot and new, and between subreddits, to avoid same posts every cycle
+  const hour = new Date().getUTCHours()
+  const sort = hour % 4 === 0 ? 'new' : 'hot'
+  const subreddits = [
+    'longevity+longevity_research',
+    'biohacking+Biohackers',
+    'nutrition+ScientificNutrition',
+    'medicine+biology',
+  ]
+  const sub = subreddits[Math.floor(hour / 6) % subreddits.length]
+
   try {
     const res = await fetch(
-      'https://www.reddit.com/r/longevity+biohacking+nootropics/.json?limit=15&sort=hot',
+      `https://www.reddit.com/r/${sub}/.json?limit=20&sort=${sort}&t=day`,
       { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(10_000) }
     )
     if (!res.ok) return []
 
     const data = await res.json() as {
-      data: { children: { data: { title: string; score: number; permalink: string } }[] }
+      data: { children: { data: { title: string; score: number; permalink: string; created_utc: number } }[] }
     }
     const now = new Date().toISOString()
+    const minScore = sort === 'new' ? 5 : 30
 
     return data.data.children
-      .filter(p => p.data.score > 30)
-      .slice(0, 6)
+      .filter(p => p.data.score > minScore)
+      .slice(0, 5)
       .map(p => ({
         source: 'reddit' as const,
         trend_type: 'velocity' as const,
@@ -28,6 +40,40 @@ async function fetchReddit(): Promise<TrendItem[]> {
       }))
   } catch (e) {
     log('[trends:reddit:error]', { message: e instanceof Error ? e.message : String(e) })
+    return []
+  }
+}
+
+async function fetchBioRxiv(): Promise<TrendItem[]> {
+  try {
+    const categories = ['physiology', 'biochemistry', 'genetics']
+    const cat = categories[new Date().getUTCHours() % categories.length]
+    const res = await fetch(
+      `https://connect.biorxiv.org/biorxiv_xml.php?subject=${cat}`,
+      { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(10_000) }
+    )
+    if (!res.ok) return []
+
+    const xml = await res.text()
+    const now = new Date().toISOString()
+    const keywords = /longevity|aging|ageing|biomarker|metabolism|hormone|glucose|insulin|inflammation|telomere|epigenetic/i
+
+    const titles = [...xml.matchAll(/<title>(.+?)<\/title>/g)]
+      .slice(1)
+      .map(m => m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').trim())
+      .filter(t => keywords.test(t))
+      .slice(0, 4)
+
+    return titles.map(title => ({
+      source: 'biorxiv' as const,
+      trend_type: 'context' as const,
+      title,
+      relevance_score: 0,
+      detected_at: now,
+      used: false,
+    }))
+  } catch (e) {
+    log('[trends:biorxiv:error]', { message: e instanceof Error ? e.message : String(e) })
     return []
   }
 }
@@ -111,13 +157,14 @@ async function fetchPerplexity(): Promise<TrendItem[]> {
 }
 
 export async function fetchAllTrends(): Promise<TrendItem[]> {
-  const [reddit, pubmed, perplexity] = await Promise.all([
+  const [reddit, pubmed, biorxiv, perplexity] = await Promise.all([
     fetchReddit(),
     fetchPubMed(),
+    fetchBioRxiv(),
     fetchPerplexity(),
   ])
 
-  const all = [...perplexity, ...reddit, ...pubmed]
+  const all = [...perplexity, ...reddit, ...pubmed, ...biorxiv]
   log('[trends:fetched]', {
     total: all.length,
     velocity: all.filter(t => t.trend_type === 'velocity').length,

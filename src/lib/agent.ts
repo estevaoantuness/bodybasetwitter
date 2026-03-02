@@ -17,7 +17,8 @@ AÇÕES QUE VOCÊ PODE EXECUTAR:
 - edit: Substituir o texto de um rascunho
 - ignore: Descartar todos os rascunhos do dia
 - generate: Gerar novos rascunhos de tweet via IA
-- trends: Ver as trends detectadas no nicho de longevidade/biomarcadores
+- trends: Ver as trends salvas recentemente no nicho de longevidade/biomarcadores
+- refresh_trends: Buscar trends AGORA de todas as fontes (Reddit, PubMed, bioRxiv) e mostrar resultado fresco
 - auto_on: Ativar publicação automática de trends (score ≥ 80)
 - auto_off: Desativar publicação automática
 - score: Ver score 0-100 e breakdown de um rascunho
@@ -41,6 +42,7 @@ DETECÇÃO DE AÇÕES — exemplos:
 - "ignora" / "descarta tudo" / "nenhum presta" → ACTION:{"action":"ignore","params":{}}
 - "gera" / "gerar" / "novos rascunhos" / "me manda ideias" → ACTION:{"action":"generate","params":{}}
 - "trends" / "o que tá em alta" / "mostra as trends" → ACTION:{"action":"trends","params":{}}
+- "busca trends agora" / "busque outras fontes" / "atualiza as trends" / "novidades" → ACTION:{"action":"refresh_trends","params":{}}
 - "ativa o automático" / "auto on" → ACTION:{"action":"auto_on","params":{}}
 - "desativa o automático" / "auto off" → ACTION:{"action":"auto_off","params":{}}
 - "score 1" / "avalia o rascunho 2" / "que nota o 1 tirou" → ACTION:{"action":"score","params":{"num":1}}
@@ -69,6 +71,7 @@ export type AgentAction =
   | { action: 'ignore' }
   | { action: 'generate' }
   | { action: 'trends' }
+  | { action: 'refresh_trends' }
   | { action: 'auto_on' }
   | { action: 'auto_off' }
   | { action: 'score'; params: { num: number } }

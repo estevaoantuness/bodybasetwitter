@@ -1,6 +1,7 @@
 import express from 'express'
 import { commandsRouter } from './commands'
 import { registerDailyCron } from './daily'
+import { registerTrendCron } from './trends'
 import { alertSistema } from './lib/telegram'
 import { log } from './lib/logger'
 
@@ -18,6 +19,7 @@ app.get('/health', (_req, res) => {
 app.listen(PORT, () => {
   log('[server:start]', { port: PORT })
   registerDailyCron()
+  registerTrendCron()
   // Delay alert 15s: if process crashes in a loop, it dies before alerting → no Telegram spam
   setTimeout(() => {
     alertSistema('🚀 bodybasetwitter iniciado / reiniciado.').catch(() => {})

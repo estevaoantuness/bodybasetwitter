@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { Draft } from '../types'
+import { Draft, TrendItem } from '../types'
 import { log } from './logger'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
@@ -140,16 +140,18 @@ async function fetchHealthNews(): Promise<string> {
   return ''
 }
 
-export async function generateDrafts(): Promise<Draft[]> {
+export async function generateDrafts(performanceContext?: string): Promise<Draft[]> {
   const today = new Date().toISOString().split('T')[0]
-  log('[claude:generateDrafts:start]', { date: today })
+  log('[claude:generateDrafts:start]', { date: today, hasPerformanceContext: !!performanceContext })
 
   const news = await fetchHealthNews()
   const newsContext = news
     ? `\n\nTópicos em alta no mundo health tech (use como inspiração/contexto):\n${news}`
     : ''
 
-  const prompt = `${SYSTEM_PROMPT}\n\nGere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.${newsContext}`
+  const perfContext = performanceContext ?? ''
+
+  const prompt = `${SYSTEM_PROMPT}\n\nGere 3 rascunhos de tweet para hoje (${today}). Varie os temas entre: biomarcadores, saúde hormonal, performance cognitiva, longevidade, sono, metabolismo.${newsContext}${perfContext}`
 
   const result = await model.generateContent(prompt)
   const rawText = result.response.text()
@@ -175,4 +177,52 @@ export async function generateDrafts(): Promise<Draft[]> {
     const format: Draft['format'] = d.format === 'image' ? 'image' : 'text'
     return { num, texto, format, date: today }
   })
+}
+
+const TREND_DRAFT_SUFFIX = `
+
+CONTEXTO ESPECIAL — TREND DETECTADA:
+Tipo: {TREND_TYPE}
+Fonte: {SOURCE}
+Tópico: {TITLE}
+{URL_LINE}
+Gere UM único tweet que surfe esta trend mantendo:
+- Tom científico e educacional (sem sensacionalismo)
+- Compliance ANVISA/CFM obrigatório (sem verbos proibidos)
+- Hook forte relacionado ao tópico em alta
+- Formato text ou thread (se o tema exigir mais de 280 chars)
+
+Retorne SOMENTE JSON de 1 draft (sem markdown):
+{"num":1,"texto":"...","format":"text"}`
+
+export async function generateDraftFromTrend(trend: TrendItem): Promise<Draft> {
+  const today = new Date().toISOString().split('T')[0]
+  log('[claude:generateDraftFromTrend:start]', { title: trend.title.slice(0, 60) })
+
+  const urlLine = trend.url ? `URL de referência: ${trend.url}` : ''
+  const trendLabel = trend.trend_type === 'velocity' ? 'Em alta AGORA (urgência)' : 'Contexto de qualidade'
+
+  const prompt = SYSTEM_PROMPT + TREND_DRAFT_SUFFIX
+    .replace('{TREND_TYPE}', trendLabel)
+    .replace('{SOURCE}', trend.source)
+    .replace('{TITLE}', trend.title)
+    .replace('{URL_LINE}', urlLine)
+
+  const result = await model.generateContent(prompt)
+  const rawText = result.response.text()
+
+  // Accept both JSON object and JSON array
+  const stripped = rawText.replace(/```(?:json)?\s*([\s\S]*?)```/, '$1').trim()
+  const parsed = JSON.parse(stripped.startsWith('[') ? stripped : stripped) as
+    | Record<string, unknown>
+    | Record<string, unknown>[]
+  const d = Array.isArray(parsed) ? (parsed[0] ?? {}) : parsed
+
+  log('[claude:generateDraftFromTrend:done]', {})
+  return {
+    num: 1,
+    texto: typeof d.texto === 'string' ? d.texto : '',
+    format: d.format === 'thread' ? 'thread' : 'text',
+    date: today,
+  }
 }

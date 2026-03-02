@@ -2,9 +2,11 @@ import { Router, Request, Response } from 'express'
 import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet, postThread, postPoll } from './lib/twitter'
-import { getDraft, saveTweet, updateDraft } from './lib/supabase'
+import { getDraft, saveTweet, updateDraft, getTopTrends } from './lib/supabase'
 import { chat } from './lib/claude'
+import { scoreTweet } from './lib/scorer'
 import { runDaily } from './daily'
+import { setAutoPublish, isAutoPublishEnabled } from './trends'
 import { log } from './lib/logger'
 
 export const commandsRouter = Router()
@@ -41,6 +43,23 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
   // "gera"
   if (/^gera$/i.test(text)) {
     return { type: 'gera' }
+  }
+
+  // "trends"
+  if (/^trends$/i.test(text)) {
+    return { type: 'trends' }
+  }
+
+  // "auto on" / "auto off"
+  const autoMatch = text.match(/^auto\s+(on|off)$/i)
+  if (autoMatch) {
+    return autoMatch[1].toLowerCase() === 'on' ? { type: 'auto_on' } : { type: 'auto_off' }
+  }
+
+  // "score N"
+  const scoreMatch = text.match(/^score\s+(\d+)$/i)
+  if (scoreMatch) {
+    return { type: 'score', num: parseInt(scoreMatch[1], 10) }
   }
 
   return { type: 'unknown' }
@@ -153,6 +172,59 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         log('[cmd:gera:start]', {})
         await runDaily()
         log('[cmd:gera:done]')
+        break
+      }
+
+      case 'trends': {
+        const trends = await getTopTrends(3)
+        if (trends.length === 0) {
+          await sendMessage(chatId, '📊 Nenhuma trend detectada ainda. Aguarde o próximo ciclo (a cada 2h).')
+        } else {
+          const lines = trends.map((t, i) =>
+            `${i + 1}. [${t.trend_type}/${t.source}] ${t.title}\n` +
+            `   Relevância: ${t.relevance_score} | ${t.detected_at.slice(0, 16).replace('T', ' ')}`
+          )
+          await sendMessage(chatId, `🔍 <b>Top Trends — Nicho Longevidade</b>\n\n${lines.join('\n\n')}`)
+        }
+        log('[cmd:trends]', {})
+        break
+      }
+
+      case 'auto_on': {
+        setAutoPublish(true)
+        await sendMessage(
+          chatId,
+          `🟢 <b>Auto-publish ATIVADO</b>\nTweets com score ≥ 80 e compliance OK serão publicados automaticamente.\nCooldown: 90 min entre posts.`
+        )
+        log('[cmd:auto_on]', {})
+        break
+      }
+
+      case 'auto_off': {
+        setAutoPublish(false)
+        await sendMessage(chatId, '🔴 <b>Auto-publish DESATIVADO</b>\nModo dry-run ativo — nenhum tweet será publicado automaticamente.')
+        log('[cmd:auto_off]', {})
+        break
+      }
+
+      case 'score': {
+        const draft = await getDraft(route.num, today)
+        const result = await scoreTweet(draft.texto)
+        const statusEmoji = isAutoPublishEnabled()
+          ? (result.score >= 80 ? '🚀 publicaria automaticamente' : result.score >= 60 ? '📩 enviaria para aprovação' : '🗑 descartaria')
+          : '🧪 dry-run ativo'
+        const msg =
+          `📊 <b>Score do Draft ${route.num}</b>: ${result.score}/100\n\n` +
+          `Compliance ANVISA/CFM: ${result.compliance ? '✅' : '❌'}\n` +
+          `Decisão: ${statusEmoji}\n` +
+          `Motivo: ${result.reason}\n\n` +
+          `<b>Breakdown:</b>\n` +
+          `• Compliance: ${result.breakdown.compliance}/25\n` +
+          `• Qualidade editorial: ${result.breakdown.quality}/25\n` +
+          `• Potencial de engajamento: ${result.breakdown.engagement}/25\n` +
+          `• Relevância/timing: ${result.breakdown.timing}/25`
+        await sendMessage(chatId, msg)
+        log('[cmd:score]', { num: route.num, score: result.score })
         break
       }
 

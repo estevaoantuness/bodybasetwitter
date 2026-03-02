@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { Draft } from '../types'
+import { Draft, TrendItem, TweetPerformance } from '../types'
 import { log } from './logger'
 
 const supabase = createClient(
@@ -101,4 +101,86 @@ export async function updateDraft(num: number, newText: string, date: string): P
   }
 
   log('[supabase:updateDraft]', { num, date })
+}
+
+export async function saveTrend(item: Omit<TrendItem, 'id'>): Promise<string | undefined> {
+  const { data, error } = await supabase
+    .from('tw_trends')
+    .insert({
+      source: item.source,
+      trend_type: item.trend_type,
+      title: item.title,
+      url: item.url ?? null,
+      relevance_score: item.relevance_score,
+      detected_at: item.detected_at,
+      used: item.used,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    log('[supabase:saveTrend:error]', { message: error.message })
+    return undefined
+  }
+  log('[supabase:saveTrend]', { id: data?.id })
+  return data?.id as string | undefined
+}
+
+export async function getTopTrends(limit = 3): Promise<TrendItem[]> {
+  const { data, error } = await supabase
+    .from('tw_trends')
+    .select('*')
+    .order('relevance_score', { ascending: false })
+    .order('detected_at', { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+  return data as TrendItem[]
+}
+
+export async function markTrendUsed(id: string): Promise<void> {
+  await supabase.from('tw_trends').update({ used: true }).eq('id', id)
+  log('[supabase:markTrendUsed]', { id })
+}
+
+export async function savePerformanceMetrics(metrics: TweetPerformance[]): Promise<void> {
+  if (metrics.length === 0) return
+  const { error } = await supabase.from('tw_performance').upsert(metrics)
+  if (error) {
+    log('[supabase:savePerformance:error]', { message: error.message })
+  } else {
+    log('[supabase:savePerformance]', { count: metrics.length })
+  }
+}
+
+export async function getRecentPostedTweetIds(days = 7): Promise<string[]> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data } = await supabase
+    .from('tw_posted')
+    .select('tweet_id')
+    .gte('posted_at', since)
+  return (data ?? []).map(r => r.tweet_id as string)
+}
+
+export async function getRecentPerformance(days = 7): Promise<TweetPerformance[]> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data } = await supabase
+    .from('tw_performance')
+    .select('*')
+    .gte('checked_at', since)
+  return (data ?? []) as TweetPerformance[]
+}
+
+export async function getLastPostedAt(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('tw_posted')
+    .select('posted_at')
+    .order('posted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    log('[supabase:getLastPostedAt:error]', { message: error.message })
+  }
+  return (data?.posted_at as string | undefined) ?? null
 }

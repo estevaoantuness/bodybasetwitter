@@ -36,10 +36,36 @@ export interface TelegramPhotoSize {
   file_size?: number
 }
 
+export interface TrendItem {
+  id?: string
+  source: 'reddit' | 'biorxiv' | 'perplexity' | 'pubmed'
+  trend_type: 'velocity' | 'context'
+  title: string
+  url?: string
+  relevance_score: number
+  detected_at: string
+  used: boolean
+}
+
+export interface TweetPerformance {
+  tweet_id: string
+  checked_at: string
+  impressions: number
+  likes: number
+  retweets: number
+  replies: number
+  bookmarks: number
+  engagement_rate: number
+}
+
 export type CommandRoute =
   | { type: 'photo_approve'; num: number; fileId: string }
   | { type: 'text_approve'; num: number }
   | { type: 'edit'; num: number; newText: string }
   | { type: 'ignore' }
   | { type: 'gera' }
+  | { type: 'trends' }
+  | { type: 'auto_on' }
+  | { type: 'auto_off' }
+  | { type: 'score'; num: number }
   | { type: 'unknown' }

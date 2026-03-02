@@ -1,7 +1,8 @@
 import cron from 'node-cron'
 import { generateDrafts } from './lib/claude'
+import { fetchTweetMetrics, formatPerformanceInsights } from './lib/analytics'
 import { sendDrafts, alertSistema } from './lib/telegram'
-import { saveResearch } from './lib/supabase'
+import { saveResearch, getRecentPostedTweetIds, getRecentPerformance, savePerformanceMetrics } from './lib/supabase'
 import { log } from './lib/logger'
 
 let isRunning = false
@@ -16,7 +17,23 @@ async function runDaily(slot?: 'morning' | 'evening'): Promise<void> {
   log('[daily:start]', { date: today, slot: slot ?? 'manual' })
 
   try {
-    const drafts = await generateDrafts()
+    // Fetch and cache performance metrics (best-effort — won't crash daily if API fails)
+    let performanceContext: string | undefined
+    try {
+      const tweetIds = await getRecentPostedTweetIds(7)
+      if (tweetIds.length > 0) {
+        const freshMetrics = await fetchTweetMetrics(tweetIds)
+        if (freshMetrics.length > 0) await savePerformanceMetrics(freshMetrics)
+      }
+      const allMetrics = await getRecentPerformance(7)
+      const insights = formatPerformanceInsights(allMetrics)
+      if (insights) performanceContext = insights
+      log('[daily:performance]', { metricsCount: allMetrics.length })
+    } catch (perfErr) {
+      log('[daily:performance:skip]', { reason: perfErr instanceof Error ? perfErr.message : String(perfErr) })
+    }
+
+    const drafts = await generateDrafts(performanceContext)
     log('[daily:claude]', { count: drafts.length })
 
     await sendDrafts(drafts, slot)

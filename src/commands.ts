@@ -23,8 +23,8 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
 
   const text = msg.text?.trim() ?? ''
 
-  // "aprova N"
-  const approveMatch = text.match(/^aprova\s+(\d+)$/i)
+  // "aprova N" / "aprovo N"
+  const approveMatch = text.match(/^aprov[ao]\s+(\d+)$/i)
   if (approveMatch) {
     return { type: 'text_approve', num: parseInt(approveMatch[1], 10) }
   }

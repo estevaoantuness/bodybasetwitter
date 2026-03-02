@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, type ChatSession } from '@google/generative-ai'
 import { Draft, TrendItem } from '../types'
 import { log } from './logger'
 
@@ -13,7 +13,6 @@ Seja direto, use dados reais quando possível. Responda em PT-BR. Mantenha conte
 })
 
 // In-memory conversation session — resets on server restart or via resetChat()
-import type { ChatSession } from '@google/generative-ai'
 let activeChatSession: ChatSession | null = null
 
 function getChatSession(): ChatSession {

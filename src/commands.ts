@@ -40,8 +40,8 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
     return { type: 'ignore' }
   }
 
-  // "gera"
-  if (/^gera$/i.test(text)) {
+  // "gera" / "gerar"
+  if (/^gerar?$/i.test(text)) {
     return { type: 'gera' }
   }
 
@@ -233,7 +233,8 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         if (userText) {
           log('[cmd:chat]', { text: userText.slice(0, 50) })
           const reply = await chat(userText)
-          await sendMessage(chatId, reply)
+          const truncated = reply.length > 4000 ? reply.slice(0, 4000) + '\n\n…(resposta truncada)' : reply
+          await sendMessage(chatId, truncated)
         }
         break
       }

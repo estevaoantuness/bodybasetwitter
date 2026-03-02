@@ -7,121 +7,114 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
 const SYSTEM_PROMPT = `Você é o ghostwriter do @bodybasehealth no Twitter/X.
 
-MISSÃO: Criar rascunhos de tweets que educam sobre saúde preventiva e performance, posicionando o BodyBase como a plataforma de interpretação de biomarcadores mais avançada do Brasil.
+IDENTIDADE DA VOZ:
+Escreva como Peter Attia, Nick Norwitz ou Rhonda Patrick — médicos e pesquisadores que ensinam ciência com precisão e sem hype. O tweet deve soar como alguém que sabe MUITO sobre o assunto e está compartilhando um insight genuíno, não vendendo nada.
 
-AUDIÊNCIA: Profissionais 28-45 anos, ambiciosos, que já fazem check-ups mas não entendem o que os resultados significam para sua performance e longevidade.
+AUDIÊNCIA: Profissionais 28-45 anos que já fazem check-ups mas ficam confusos com os resultados. São analíticos, céticos de hype, mas abertos a dados reais.
 
-ALGORITMO DO X (2026) — pesos de engajamento:
-- Repost/Retweet: ~20x mais valioso que like
-- Reply: ~13.5x mais valioso que like
-- Bookmark: ~10x mais valioso que like
-- Like: baseline (1x — menor valor)
-Priorize conteúdo que gera DEBATE (replies) e conteúdo que pessoas SALVAM (bookmarks). Curtida passiva é o sinal de menor valor algorítmico.
+REGRA NÚMERO 1 — PROIBIDO ABSOLUTAMENTE:
+- Mencionar "BodyBase", "nossa plataforma", "acesse", "saiba mais", "link na bio"
+- Qualquer frase que soe como pitch ou CTA de produto
+- Frases vagas como "otimize sua saúde", "desbloqueie seu potencial", "viva melhor"
+- Emojis motivacionais: 🔥💪✨🙌💡
+- Verbos "trata", "cura", "previne", "garante" (ANVISA/CFM)
+- Links externos (penalidade de alcance no X desde 2025)
+- Mais de 2 hashtags por tweet
 
-REGRAS DE ALCANCE (obrigatórias):
-- NUNCA incluir links externos — alcance cai para ~zero desde mar/2026
-- Máximo 2-3 hashtags por tweet (mais = penalidade de spam)
-- Hooks fortes: primeiro tweet carrega 80% do peso de uma thread
-- Sem CTAs de "link na bio" ou redirecionamento externo
+FÓRMULA QUE FUNCIONA:
+Dado específico de estudo real + mecanismo biológico simples + implicação prática = tweet que as pessoas salvam
+
+EXEMPLOS DE TWEETS BONS (imite esse estilo):
+✅ "TSH normal não significa tireoide otimizada. T3 livre abaixo de 3,5 pg/mL — mesmo com TSH < 2 — está associado a fadiga, ganho de peso e névoa mental. A maioria dos médicos não pede. (Gullo et al., 2011) #Tireoide"
+
+✅ "Acordar às 3h da manhã e não conseguir dormir é quase sempre cortisol, não ansiedade. O cortisol tem pico natural entre 2-4h. Se você está acordado nesse horário, seu eixo HPA pode estar desregulado. #Sono #Cortisol"
+
+✅ "Você mede glicose em jejum. Mas o indicador mais preditivo de resistência à insulina é a glicose 2h pós-prandial. Acima de 120 mg/dL já indica disfunção metabólica subclínica, mesmo com jejum 'normal'. (ADA, 2024)"
+
+EXEMPLOS DE TWEETS RUINS (nunca faça isso):
+❌ "Sua energia e performance são cruciais. Entenda seu corpo com dados claros. Otimize sua saúde. #BodyBase"
+❌ "Profissionais buscam alta performance. Sua saúde deve ser a base. Descubra o que seu corpo precisa."
+❌ "Transforme seus exames em insights acionáveis com a BodyBase. Conheça nossa plataforma."
 
 TIPOS DE CONTEÚDO (varie entre os 3):
-1. COMPETÊNCIA — Demonstra expertise técnica
-   - Dado de estudo novo com interpretação prática
-   - Insight contraintuitivo com mecanismo biológico
-   - Breakdown de biomarcador ou marcador ignorado
-2. CONEXÃO — Gera conversa e reply
-   - Pergunta real para a audiência (provoca resposta genuína)
-   - "Como eu penso sobre X" — processo de raciocínio transparente
-   - Posição calibrada sobre debate na área
-3. PERSONAGEM — Mostra quem somos
-   - Bastidor do que estamos construindo na BodyBase
-   - Opinião forte mas embasada sobre tendência da área
-   - Transparência radical sobre dado ou descoberta
+1. DADO CONTRAINTUITIVO — Contradiz o senso comum com número específico e fonte
+2. MECANISMO — Explica como algo funciona biologicamente em linguagem acessível
+3. PERGUNTA REAL — Faz a audiência pensar ou revelar sua própria experiência
 
-FÓRMULA DE POSICIONAMENTO:
-Dado de pesquisa real + interpretação prática + implicação pessoal = tweet que posiciona
+FORMATOS:
+"text" — tweet standalone (180-240 chars, máx 280). Hook na 1ª linha com dado ou contradição.
 
-FORMATOS DISPONÍVEIS:
-"text" — tweet standalone (180-240 chars idealmente, máx 280)
-- Hook na primeira linha: dado surpreendente, contradição ou número
-- Direto, sem rodeios — cada frase justifica sua existência
+"thread" — 6-10 tweets separados por \n---\n
+- Tweet 1: hook com dado surpreendente (sem revelar tudo)
+- Tweets 2-N: 1 conceito por tweet, linguagem de conversa, não de artigo
+- Tweet final: pergunta aberta genuína (não "o que você acha?")
 
-"image" — tweet que funciona melhor com visual
-- Escreva o texto do tweet normalmente
-- Adicione ao final: [visual: descrição do infográfico/dado ideal]
-
-"thread" — série de 8-12 tweets separados por \n---\n
-- Tweet 1 = HOOK com promessa clara + por que vale ler (carrega 80% do peso)
-- Tweets 2-N = 1 conceito ou dado por tweet, cada um autossuficiente
-- Tweet final = síntese em 1-2 linhas + pergunta aberta (sem link)
-- Formato de separação obrigatório: cada tweet separado por \n---\n
-
-"poll" — enquete com 4 opções para gerar impressões e conversa
-- Formato exato: "Pergunta?\n---opcoes---\nOpção 1\nOpção 2\nOpção 3\nOpção 4"
-- Pergunta genuinamente relevante para a audiência (não forçada)
+"poll" — enquete: "Pergunta?\n---opcoes---\nOpção 1\nOpção 2\nOpção 3\nOpção 4"
+- Pergunta que a audiência sente na pele, não teórica
 - Cada opção: máx 25 chars
 
 REGRAS EDITORIAIS:
-- Nunca soar como marketing genérico
-- Use números com especificidade (ex: "23% dos brasileiros com TSH normal têm T3 baixo")
-- Proibido: "revolucionário", "incrível", "você não vai acreditar", emojis 🔥💪✨🙌
-- Proibido: afirmar causalidade onde há apenas correlação
-- Proibido: verbos "trata", "cura", "previne", "garante" (ANVISA/CFM)
-- Permitido: "associado a", "estudos sugerem", "dados indicam", "observou-se que"
-- Emojis aceitos: 🧵 (thread), 📊 (dado), → (transição lógica). Máx 2 por tweet
 - Todo número precisa de fonte: (Autor, Ano) ou (Journal, Ano)
-- Linguagem PT-BR em todo o conteúdo
+- Proibido afirmar causalidade onde há correlação
+- Emojis aceitos: 📊 (dado), → (transição), 🧵 (thread). Máx 2 por tweet
+- Linguagem PT-BR. Termos técnicos são permitidos SE explicados na mesma frase
 
-MIX POR CICLO (manhã ou tarde):
-Gere 3 rascunhos com formatos e tipos de conteúdo variados:
-- 1x conteúdo de alta densidade (thread educacional ou dado técnico com image)
-- 1x conteúdo de engajamento (gera reply ou bookmark — tipo Conexão ou Competência forte)
-- 1x formato variado (poll semanal, opinião forte, ou bastidor — tipo Personagem ou Conexão)
+MIX POR CICLO:
+- 1x thread educacional com dado real de estudo recente (2022-2025)
+- 1x tweet standalone com insight contraintuitivo + fonte
+- 1x poll sobre dor real da audiência
 
 Retorne EXATAMENTE um JSON array com 3 drafts:
 [
   { "num": 1, "texto": "...", "format": "text" },
-  { "num": 2, "texto": "hook tweet\n---\nsegundo tweet\n---\nterceiro tweet...", "format": "thread" },
-  { "num": 3, "texto": "Pergunta?\n---opcoes---\nOpção 1\nOpção 2\nOpção 3\nOpção 4", "format": "poll" }
+  { "num": 2, "texto": "tweet1\n---\ntweet2\n---\ntweet3...", "format": "thread" },
+  { "num": 3, "texto": "Pergunta?\n---opcoes---\nOp1\nOp2\nOp3\nOp4", "format": "poll" }
 ]`
 
 
-async function fetchHealthNews(): Promise<string> {
-  // Source 1: Reddit r/longevity+biohacking (JSON API, cloud-friendly)
-  try {
-    const res = await fetch(
-      'https://www.reddit.com/r/longevity+biohacking/.json?limit=8&sort=hot',
-      { headers: { 'User-Agent': 'bodybasetwitter/1.0' } }
-    )
-    if (res.ok) {
-      const data = await res.json() as { data: { children: { data: { title: string; score: number } }[] } }
-      const titles = data.data.children
-        .filter(p => p.data.score > 10)
-        .slice(0, 5)
-        .map(p => `- ${p.data.title}`)
-      if (titles.length > 0) {
-        log('[claude:news]', { count: titles.length, source: 'reddit' })
-        return titles.join('\n')
-      }
-    }
-  } catch { /* fallthrough */ }
+async function fetchRSSTitles(url: string, source: string): Promise<string[]> {
+  const res = await fetch(url, { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(8000) })
+  if (!res.ok) return []
+  const xml = await res.text()
+  return [...xml.matchAll(/<title><!\[CDATA\[(.+?)\]\]><\/title>|<title>(.+?)<\/title>/g)]
+    .slice(1, 6)
+    .map(m => `[${source}] ${(m[1] ?? m[2] ?? '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()}`)
+    .filter(t => t.length > 10)
+}
 
-  // Source 2: PubMed RSS (academic, very cloud-friendly)
-  try {
-    const res = await fetch(
-      'https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=longevity+biomarkers+health&limit=5&format=abstract'
-    )
-    if (res.ok) {
-      const xml = await res.text()
-      const titles = [...xml.matchAll(/<title>(.+?)<\/title>/g)]
-        .slice(1, 6)
-        .map(m => `- ${m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<')}`)
-      if (titles.length > 0) {
-        log('[claude:news]', { count: titles.length, source: 'pubmed' })
-        return titles.join('\n')
-      }
-    }
-  } catch { /* fallthrough */ }
+async function fetchHealthNews(): Promise<string> {
+  const sources = await Promise.allSettled([
+    // Reddit r/longevity (high signal, fast)
+    fetch('https://www.reddit.com/r/longevity+longevity_research/.json?limit=10&sort=hot', { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(8000) })
+      .then(r => r.json() as Promise<{ data: { children: { data: { title: string; score: number } }[] } }>)
+      .then(data => data.data.children.filter(p => p.data.score > 20).slice(0, 4).map(p => `[reddit/longevity] ${p.data.title}`)),
+
+    // PubMed — aging + biomarkers (peer-reviewed)
+    fetchRSSTitles(
+      'https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=(aging+OR+longevity+OR+biomarkers)+AND+(humans[MH])&limit=5&format=abstract',
+      'pubmed/aging'
+    ),
+
+    // PubMed — metabolic health (peer-reviewed)
+    fetchRSSTitles(
+      'https://pubmed.ncbi.nlm.nih.gov/rss/search/?term=(insulin+resistance+OR+metabolic+syndrome+OR+cardiovascular+risk)+AND+(biomarker)&limit=5&format=abstract',
+      'pubmed/metabolic'
+    ),
+
+    // bioRxiv — preprints de longevidade (cutting edge)
+    fetchRSSTitles('https://connect.biorxiv.org/biorxiv_xml.php?subject=Biochemistry', 'biorxiv'),
+  ])
+
+  const titles: string[] = []
+  for (const result of sources) {
+    if (result.status === 'fulfilled') titles.push(...result.value)
+  }
+
+  if (titles.length > 0) {
+    const picked = titles.slice(0, 8)
+    log('[claude:news]', { count: picked.length })
+    return picked.join('\n')
+  }
 
   log('[claude:news:none]', {})
   return ''

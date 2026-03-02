@@ -3,7 +3,7 @@ import { TelegramUpdate, CommandRoute } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet, postThread, postPoll } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft, getTopTrends } from './lib/supabase'
-import { chat } from './lib/claude'
+import { chat, resetChat } from './lib/claude'
 import { scoreTweet } from './lib/scorer'
 import { runDaily } from './daily'
 import { setAutoPublish, isAutoPublishEnabled } from './trends'
@@ -43,6 +43,11 @@ function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
   // "gera" / "gerar"
   if (/^gerar?$/i.test(text)) {
     return { type: 'gera' }
+  }
+
+  // "limpar" — reset chat history
+  if (/^limpar$/i.test(text)) {
+    return { type: 'limpar' }
   }
 
   // "trends"
@@ -225,6 +230,13 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
           `• Relevância/timing: ${result.breakdown.timing}/25`
         await sendMessage(chatId, msg)
         log('[cmd:score]', { num: route.num, score: result.score })
+        break
+      }
+
+      case 'limpar': {
+        resetChat()
+        await sendMessage(chatId, '🧹 Histórico da conversa limpo.')
+        log('[cmd:limpar]', {})
         break
       }
 

@@ -68,4 +68,5 @@ export type CommandRoute =
   | { type: 'auto_on' }
   | { type: 'auto_off' }
   | { type: 'score'; num: number }
+  | { type: 'limpar' }
   | { type: 'unknown' }

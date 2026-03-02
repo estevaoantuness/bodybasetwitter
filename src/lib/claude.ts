@@ -4,7 +4,29 @@ import { log } from './logger'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-const chatModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+const chatModel = genAI.getGenerativeModel({
+  model: 'gemini-2.5-flash',
+  systemInstruction: `Você é o assistente de conteúdo do @bodybasehealth no Twitter/X.
+Ajuda o Estevão (fundador do BodyBase) com: ideias de tweets, feedback de copy, estratégia de conteúdo, dados de saúde/biomarcadores para posts.
+BodyBase é uma plataforma de saúde preventiva e performance baseada em biomarcadores. Público: profissionais 28-45 anos.
+Seja direto, use dados reais quando possível. Responda em PT-BR. Mantenha contexto de toda a conversa.`,
+})
+
+// In-memory conversation session — resets on server restart or via resetChat()
+import type { ChatSession } from '@google/generative-ai'
+let activeChatSession: ChatSession | null = null
+
+function getChatSession(): ChatSession {
+  if (!activeChatSession) {
+    activeChatSession = chatModel.startChat({ history: [] })
+  }
+  return activeChatSession
+}
+
+export function resetChat(): void {
+  activeChatSession = null
+  log('[claude:chat:reset]', {})
+}
 
 const SYSTEM_PROMPT = `Você é o ghostwriter do @bodybasehealth no Twitter/X.
 
@@ -86,14 +108,10 @@ Retorne EXATAMENTE um JSON array com 3 drafts:
   { "num": 3, "texto": "Pergunta?\n---opcoes---\nOpção 1\nOpção 2\nOpção 3\nOpção 4", "format": "poll" }
 ]`
 
-const CHAT_SYSTEM = `Você é o assistente de conteúdo do @bodybasehealth no Twitter/X.
-Ajuda o Estevão (fundador do BodyBase) com: ideias de tweets, feedback de copy, estratégia de conteúdo, dados de saúde/biomarcadores para posts.
-BodyBase é uma plataforma de saúde preventiva e performance baseada em biomarcadores. Público: profissionais 28-45 anos.
-Seja direto, use dados reais quando possível. Responda em PT-BR.`
-
 export async function chat(userMessage: string): Promise<string> {
   log('[claude:chat:start]', { len: userMessage.length })
-  const result = await chatModel.generateContent(`${CHAT_SYSTEM}\n\nUsuário: ${userMessage}`)
+  const session = getChatSession()
+  const result = await session.sendMessage(userMessage)
   const reply = result.response.text()
   log('[claude:chat:done]', { reply_len: reply.length })
   return reply

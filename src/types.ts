@@ -58,15 +58,3 @@ export interface TweetPerformance {
   engagement_rate: number
 }
 
-export type CommandRoute =
-  | { type: 'photo_approve'; num: number; fileId: string }
-  | { type: 'text_approve'; num: number }
-  | { type: 'edit'; num: number; newText: string }
-  | { type: 'ignore' }
-  | { type: 'gera' }
-  | { type: 'trends' }
-  | { type: 'auto_on' }
-  | { type: 'auto_off' }
-  | { type: 'score'; num: number }
-  | { type: 'limpar' }
-  | { type: 'unknown' }

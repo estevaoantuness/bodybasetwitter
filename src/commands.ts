@@ -1,74 +1,15 @@
 import { Router, Request, Response } from 'express'
-import { TelegramUpdate, CommandRoute } from './types'
+import { TelegramUpdate } from './types'
 import { getFilePath, downloadFile, sendMessage, confirm, alertSistema } from './lib/telegram'
 import { uploadMedia, postTweet, postThread, postPoll } from './lib/twitter'
 import { getDraft, saveTweet, updateDraft, getTopTrends } from './lib/supabase'
-import { chat, resetChat } from './lib/claude'
 import { scoreTweet } from './lib/scorer'
 import { runDaily } from './daily'
 import { setAutoPublish, isAutoPublishEnabled } from './trends'
+import { processMessage, resetSession } from './lib/agent'
 import { log } from './lib/logger'
 
 export const commandsRouter = Router()
-
-function parseRoute(msg: NonNullable<TelegramUpdate['message']>): CommandRoute {
-  // Photo with caption "aprova N"
-  if (msg.photo && msg.caption) {
-    const match = msg.caption.trim().match(/^aprova\s+(\d+)$/i)
-    if (match) {
-      const lastPhoto = msg.photo[msg.photo.length - 1]
-      return { type: 'photo_approve', num: parseInt(match[1], 10), fileId: lastPhoto.file_id }
-    }
-  }
-
-  const text = msg.text?.trim() ?? ''
-
-  // "aprova N" / "aprovo N"
-  const approveMatch = text.match(/^aprov[ao]\s+(\d+)$/i)
-  if (approveMatch) {
-    return { type: 'text_approve', num: parseInt(approveMatch[1], 10) }
-  }
-
-  // "edita N: novo texto"
-  const editMatch = text.match(/^edita\s+(\d+):\s*(.+)$/is)
-  if (editMatch) {
-    return { type: 'edit', num: parseInt(editMatch[1], 10), newText: editMatch[2].trim() }
-  }
-
-  // "ignore"
-  if (/^ignore$/i.test(text)) {
-    return { type: 'ignore' }
-  }
-
-  // "gera" / "gerar"
-  if (/^gerar?$/i.test(text)) {
-    return { type: 'gera' }
-  }
-
-  // "limpar" — reset chat history
-  if (/^limpar$/i.test(text)) {
-    return { type: 'limpar' }
-  }
-
-  // "trends"
-  if (/^trends$/i.test(text)) {
-    return { type: 'trends' }
-  }
-
-  // "auto on" / "auto off"
-  const autoMatch = text.match(/^auto\s+(on|off)$/i)
-  if (autoMatch) {
-    return autoMatch[1].toLowerCase() === 'on' ? { type: 'auto_on' } : { type: 'auto_off' }
-  }
-
-  // "score N"
-  const scoreMatch = text.match(/^score\s+(\d+)$/i)
-  if (scoreMatch) {
-    return { type: 'score', num: parseInt(scoreMatch[1], 10) }
-  }
-
-  return { type: 'unknown' }
-}
 
 commandsRouter.post('/webhook', async (req: Request, res: Response) => {
   const update = req.body as TelegramUpdate
@@ -98,71 +39,77 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
 
   const chatId = msg.chat.id
   const today = new Date().toISOString().split('T')[0]
-  const route = parseRoute(msg)
-  log('[cmd:received]', { route: route.type, chatId })
 
   // Respond 200 immediately so Telegram doesn't retry
   res.sendStatus(200)
 
-  // tweetId declared here so catch can detect orphan tweets
   let tweetId: string | null = null
 
   try {
-    switch (route.type) {
-      case 'photo_approve': {
-        const filePath = await getFilePath(route.fileId)
-        log('[cmd:file]', { filePath })
+    // Photo with caption → always treated as photo approval
+    if (msg.photo && msg.caption) {
+      const numMatch = msg.caption.trim().match(/\d+/)
+      const num = numMatch ? parseInt(numMatch[0], 10) : 1
 
-        const buffer = await downloadFile(filePath)
-        log('[cmd:download]', { bytes: buffer.length })
+      const lastPhoto = msg.photo[msg.photo.length - 1]
+      const filePath = await getFilePath(lastPhoto.file_id)
+      const buffer = await downloadFile(filePath)
+      const ext = filePath.split('.').pop() ?? 'jpg'
+      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg'
+      const mediaId = await uploadMedia(buffer, mimeType)
+      const draft = await getDraft(num, today)
+      tweetId = await postTweet(draft.texto, mediaId)
+      await saveTweet(tweetId, draft.texto, 'image')
+      await confirm(chatId, tweetId)
+      log('[cmd:photo_approve]', { num, tweetId })
+      return
+    }
 
-        const ext = filePath.split('.').pop() ?? 'jpg'
-        const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg'
-        const mediaId = await uploadMedia(buffer, mimeType)
-        log('[cmd:media]', { mediaId })
+    const text = msg.text?.trim()
+    if (!text) return
 
-        const draft = await getDraft(route.num, today)
-        log('[cmd:draft]', { num: route.num, texto: draft.texto.slice(0, 50) })
+    log('[agent:incoming]', { text: text.slice(0, 80) })
+    const result = await processMessage(text)
 
-        tweetId = await postTweet(draft.texto, mediaId)
-        log('[cmd:tweet]', { tweetId })
+    if (result.type === 'reply') {
+      const truncated = result.text.length > 4000
+        ? result.text.slice(0, 4000) + '\n\n…(truncado)'
+        : result.text
+      await sendMessage(chatId, truncated)
+      return
+    }
 
-        await saveTweet(tweetId, draft.texto, 'image')
-        await confirm(chatId, tweetId)
-        log('[cmd:confirm]', { tweetId })
-        break
-      }
+    // Execute action
+    const { data } = result
 
-      case 'text_approve': {
-        const draft = await getDraft(route.num, today)
-        log('[cmd:draft]', { num: route.num, format: draft.format, texto: draft.texto.slice(0, 50) })
+    switch (data.action) {
+      case 'approve': {
+        const draft = await getDraft(data.params.num, today)
+        log('[cmd:approve]', { num: data.params.num, format: draft.format })
 
         if (draft.format === 'thread') {
           const tweets = draft.texto.split('\n---\n').filter(t => t.trim())
           tweetId = await postThread(tweets)
-          log('[cmd:thread]', { tweetId, count: tweets.length })
           await saveTweet(tweetId, draft.texto, 'thread')
         } else if (draft.format === 'poll') {
           const [question, optionsBlock] = draft.texto.split('\n---opcoes---\n')
           const options = (optionsBlock ?? '').trim().split('\n').filter(Boolean)
           tweetId = await postPoll(question.trim(), options)
-          log('[cmd:poll]', { tweetId })
           await saveTweet(tweetId, draft.texto, 'poll')
         } else {
           tweetId = await postTweet(draft.texto)
-          log('[cmd:tweet]', { tweetId })
           await saveTweet(tweetId, draft.texto, draft.format)
         }
 
         await confirm(chatId, tweetId)
-        log('[cmd:confirm]', { tweetId })
+        log('[cmd:approve:done]', { tweetId })
         break
       }
 
       case 'edit': {
-        await updateDraft(route.num, route.newText, today)
-        await sendMessage(chatId, `✏️ Draft ${route.num} atualizado:\n\n${route.newText}`)
-        log('[cmd:edit]', { num: route.num })
+        await updateDraft(data.params.num, data.params.text, today)
+        await sendMessage(chatId, `✏️ Draft ${data.params.num} atualizado:\n\n${data.params.text}`)
+        log('[cmd:edit]', { num: data.params.num })
         break
       }
 
@@ -172,11 +119,11 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
         break
       }
 
-      case 'gera': {
+      case 'generate': {
         await sendMessage(chatId, '⏳ Gerando rascunhos...')
-        log('[cmd:gera:start]', {})
+        log('[cmd:generate:start]')
         await runDaily()
-        log('[cmd:gera:done]')
+        log('[cmd:generate:done]')
         break
       }
 
@@ -191,73 +138,59 @@ commandsRouter.post('/webhook', async (req: Request, res: Response) => {
           )
           await sendMessage(chatId, `🔍 <b>Top Trends — Nicho Longevidade</b>\n\n${lines.join('\n\n')}`)
         }
-        log('[cmd:trends]', {})
+        log('[cmd:trends]')
         break
       }
 
       case 'auto_on': {
         setAutoPublish(true)
-        await sendMessage(
-          chatId,
-          `🟢 <b>Auto-publish ATIVADO</b>\nTweets com score ≥ 80 e compliance OK serão publicados automaticamente.\nCooldown: 90 min entre posts.`
-        )
-        log('[cmd:auto_on]', {})
+        await sendMessage(chatId, `🟢 <b>Auto-publish ATIVADO</b>\nTweets com score ≥ 80 serão publicados automaticamente. Cooldown: 90min.`)
+        log('[cmd:auto_on]')
         break
       }
 
       case 'auto_off': {
         setAutoPublish(false)
-        await sendMessage(chatId, '🔴 <b>Auto-publish DESATIVADO</b>\nModo dry-run ativo — nenhum tweet será publicado automaticamente.')
-        log('[cmd:auto_off]', {})
+        await sendMessage(chatId, '🔴 <b>Auto-publish DESATIVADO</b>\nModo dry-run ativo.')
+        log('[cmd:auto_off]')
         break
       }
 
       case 'score': {
-        const draft = await getDraft(route.num, today)
-        const result = await scoreTweet(draft.texto)
-        const statusEmoji = isAutoPublishEnabled()
-          ? (result.score >= 80 ? '🚀 publicaria automaticamente' : result.score >= 60 ? '📩 enviaria para aprovação' : '🗑 descartaria')
+        const draft = await getDraft(data.params.num, today)
+        const scored = await scoreTweet(draft.texto)
+        const decision = isAutoPublishEnabled()
+          ? (scored.score >= 80 ? '🚀 publicaria automaticamente' : scored.score >= 60 ? '📩 enviaria para aprovação' : '🗑 descartaria')
           : '🧪 dry-run ativo'
-        const msg =
-          `📊 <b>Score do Draft ${route.num}</b>: ${result.score}/100\n\n` +
-          `Compliance ANVISA/CFM: ${result.compliance ? '✅' : '❌'}\n` +
-          `Decisão: ${statusEmoji}\n` +
-          `Motivo: ${result.reason}\n\n` +
+        await sendMessage(chatId,
+          `📊 <b>Score do Draft ${data.params.num}</b>: ${scored.score}/100\n\n` +
+          `Compliance ANVISA/CFM: ${scored.compliance ? '✅' : '❌'}\n` +
+          `Decisão: ${decision}\n` +
+          `Motivo: ${scored.reason}\n\n` +
           `<b>Breakdown:</b>\n` +
-          `• Compliance: ${result.breakdown.compliance}/25\n` +
-          `• Qualidade editorial: ${result.breakdown.quality}/25\n` +
-          `• Potencial de engajamento: ${result.breakdown.engagement}/25\n` +
-          `• Relevância/timing: ${result.breakdown.timing}/25`
-        await sendMessage(chatId, msg)
-        log('[cmd:score]', { num: route.num, score: result.score })
+          `• Compliance: ${scored.breakdown.compliance}/25\n` +
+          `• Qualidade editorial: ${scored.breakdown.quality}/25\n` +
+          `• Potencial de engajamento: ${scored.breakdown.engagement}/25\n` +
+          `• Relevância/timing: ${scored.breakdown.timing}/25`
+        )
+        log('[cmd:score]', { num: data.params.num, score: scored.score })
         break
       }
 
-      case 'limpar': {
-        resetChat()
+      case 'reset_chat': {
+        resetSession()
         await sendMessage(chatId, '🧹 Histórico da conversa limpo.')
-        log('[cmd:limpar]', {})
-        break
-      }
-
-      case 'unknown': {
-        const userText = msg.text?.trim()
-        if (userText) {
-          log('[cmd:chat]', { text: userText.slice(0, 50) })
-          const reply = await chat(userText)
-          const truncated = reply.length > 4000 ? reply.slice(0, 4000) + '\n\n…(resposta truncada)' : reply
-          await sendMessage(chatId, truncated)
-        }
+        log('[cmd:reset_chat]')
         break
       }
     }
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e))
-    log('[cmd:error]', { route: route.type, message: err.message, tweetId })
+    log('[cmd:error]', { message: err.message, tweetId })
     if (tweetId) {
-      await alertSistema(`⚠️ TWEET ÓRFÃO: postado no Twitter (ID: ${tweetId}), mas falhou ao salvar no Supabase → ${err.message}`)
+      await alertSistema(`⚠️ TWEET ÓRFÃO: postado no Twitter (ID: ${tweetId}), mas falhou ao salvar → ${err.message}`)
     } else {
-      await alertSistema(`cmd:${route.type} → ${err.message}`)
+      await alertSistema(`cmd:error → ${err.message}`)
     }
   }
 })

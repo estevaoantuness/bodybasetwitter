@@ -72,7 +72,7 @@ Retorne EXATAMENTE um JSON array com 3 drafts:
 ]`
 
 
-async function fetchRSSTitles(url: string, source: string): Promise<string[]> {
+export async function fetchRSSTitles(url: string, source: string): Promise<string[]> {
   const res = await fetch(url, { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(8000) })
   if (!res.ok) return []
   const xml = await res.text()
@@ -82,7 +82,7 @@ async function fetchRSSTitles(url: string, source: string): Promise<string[]> {
     .filter(t => t.length > 10)
 }
 
-async function fetchHealthNews(): Promise<string> {
+export async function fetchHealthNews(): Promise<string> {
   const sources = await Promise.allSettled([
     // Reddit r/longevity (high signal, fast)
     fetch('https://www.reddit.com/r/longevity+longevity_research/.json?limit=10&sort=hot', { headers: { 'User-Agent': 'bodybasetwitter/1.0' }, signal: AbortSignal.timeout(8000) })
@@ -204,5 +204,108 @@ export async function generateDraftFromTrend(trend: TrendItem): Promise<Draft> {
     texto: typeof d.texto === 'string' ? d.texto : '',
     format: d.format === 'thread' ? 'thread' : 'text',
     date: today,
+  }
+}
+
+// --- Auto-post draft generation ---
+
+const AUTOPOST_NEWS_PROMPT = `${SYSTEM_PROMPT}
+
+TAREFA ESPECIAL — AUTO-POST COM IMAGEM (notícias científicas):
+Escolha UMA das notícias abaixo e crie um tweet standalone sobre ela.
+
+NOTÍCIAS RECENTES:
+{NEWS}
+
+REGRAS EXTRAS PARA AUTO-POST:
+- Formato OBRIGATÓRIO: texto standalone (180-240 chars, máx 280)
+- O tweet vai ser postado COM uma imagem gerada por IA
+- Por isso, o texto NÃO deve descrever a imagem — eles se complementam
+- Foque no dado mais surpreendente ou contraintuitivo da notícia
+- Sempre inclua a fonte (Autor, Ano) ou (Journal, Ano)
+- Gere também um prompt em inglês para gerar uma imagem científica minimalista
+
+Retorne SOMENTE JSON válido (sem markdown):
+{"texto":"tweet em pt-br aqui","imagePrompt":"prompt em inglês para imagem fotorrealista"}`
+
+const AUTOPOST_CURIOSITY_PROMPT = `${SYSTEM_PROMPT}
+
+TAREFA ESPECIAL — AUTO-POST COM IMAGEM (curiosidade científica):
+Gere um tweet sobre uma curiosidade científica fascinante relacionada a: biomarcadores, longevidade, sono, metabolismo, performance cognitiva, hormônios, microbioma, genética, neurociência, fisiologia do exercício.
+
+REGRAS EXTRAS PARA AUTO-POST:
+- Formato OBRIGATÓRIO: texto standalone (180-240 chars, máx 280)
+- O tweet vai ser postado COM uma imagem gerada por IA
+- Escolha fatos que surpreendam — "eu não sabia disso!" é a reação ideal
+- Exemplos de ângulos bons: estatísticas pouco conhecidas, mecanismos biológicos contraintuitivos, comparações inesperadas, dados de estudos recentes
+- Sempre inclua a fonte (Autor, Ano) ou (Journal, Ano)
+- NÃO repita temas que já postou recentemente
+- Gere também um prompt em inglês para gerar uma imagem fotorrealista
+
+Retorne SOMENTE JSON válido (sem markdown):
+{"texto":"tweet em pt-br aqui","imagePrompt":"prompt em inglês para imagem fotorrealista"}`
+
+const IMAGE_PROMPT_RULES = `
+
+REGRAS PARA O imagePrompt (CRÍTICO — leia com atenção):
+O imagePrompt será usado para gerar uma imagem com IA. A imagem DEVE ser:
+- FOTORREALISTA — como uma foto profissional de banco de imagens (Getty, Shutterstock)
+- Diretamente sobre o assunto do tweet — se o tweet fala de sono, a imagem mostra alguém dormindo; se fala de biomarcadores, mostra exame de sangue ou laboratório
+- Alta qualidade, iluminação profissional, foco nítido
+- SEM texto na imagem, SEM logos, SEM watermarks
+- SEM ilustrações, SEM cartoons, SEM infográficos, SEM arte abstrata
+
+FORMATO DO imagePrompt:
+"Professional photorealistic photograph of [cena específica do assunto], [detalhes de composição], soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay, no watermarks"
+
+EXEMPLOS BONS:
+- Tweet sobre cortisol/sono: "Professional photorealistic photograph of a person peacefully sleeping in a dark bedroom with soft moonlight through curtains, close-up side view, soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
+- Tweet sobre biomarcadores: "Professional photorealistic photograph of a medical professional analyzing blood test results on a modern laboratory screen, clean clinical environment, soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
+- Tweet sobre exercício: "Professional photorealistic photograph of an athletic person running at sunrise in a park, dynamic motion captured, golden hour lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
+
+EXEMPLOS RUINS (nunca faça):
+- "Scientific illustration of cells" → parece cartoon
+- "Abstract visualization of health data" → sem relação visual clara
+- "Minimalist medical icon" → parece clipart`
+
+export interface AutoPostDraft {
+  texto: string
+  imagePrompt: string
+}
+
+export async function generateAutoPostDraft(type: 'news' | 'curiosity'): Promise<AutoPostDraft> {
+  log('[claude:autopost:start]', { type })
+
+  let prompt: string
+  if (type === 'news') {
+    const news = await fetchHealthNews()
+    if (!news) {
+      log('[claude:autopost:no-news]', {})
+      prompt = AUTOPOST_CURIOSITY_PROMPT + IMAGE_PROMPT_RULES
+    } else {
+      prompt = AUTOPOST_NEWS_PROMPT.replace('{NEWS}', news) + IMAGE_PROMPT_RULES
+    }
+  } else {
+    prompt = AUTOPOST_CURIOSITY_PROMPT + IMAGE_PROMPT_RULES
+  }
+
+  const result = await model.generateContent(prompt)
+  const rawText = result.response.text()
+
+  const usageMeta = result.response.usageMetadata
+  log('[claude:autopost:done]', {
+    type,
+    input_tokens: usageMeta?.promptTokenCount ?? 0,
+    output_tokens: usageMeta?.candidatesTokenCount ?? 0,
+  })
+
+  const stripped = rawText.replace(/```(?:json)?\s*([\s\S]*?)```/, '$1').trim()
+  const jsonMatch = stripped.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error(`[claude:autopost] no JSON in response: ${stripped.slice(0, 100)}`)
+
+  const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+  return {
+    texto: typeof parsed.texto === 'string' ? parsed.texto : '',
+    imagePrompt: typeof parsed.imagePrompt === 'string' ? parsed.imagePrompt : 'scientific health illustration minimalist clean',
   }
 }

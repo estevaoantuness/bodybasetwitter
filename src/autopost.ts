@@ -11,19 +11,34 @@ const COOLDOWN_MS = 90 * 60 * 1000 // 90 minutes between auto-posts
 
 async function fetchImage(prompt: string): Promise<Buffer> {
   // Pollinations AI with Flux model for photorealistic quality
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1200&height=675&nologo=true&model=flux`
+  const baseUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1200&height=675&nologo=true&model=flux`
   log('[autopost:image:fetch]', { prompt: prompt.slice(0, 80) })
 
-  // Image generation can take 15-45s depending on load
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
-  if (!res.ok) throw new Error(`[autopost:image] fetch failed: ${res.status}`)
+  // Retry up to 2 times (Pollinations can be flaky)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const url = attempt === 1 ? baseUrl : `${baseUrl}&seed=${Date.now()}`
+      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+      if (!res.ok) {
+        log('[autopost:image:retry]', { attempt, status: res.status })
+        if (attempt === 2) throw new Error(`[autopost:image] fetch failed: ${res.status}`)
+        continue
+      }
 
-  const arrayBuffer = await res.arrayBuffer()
-  if (arrayBuffer.byteLength < 5000) {
-    throw new Error(`[autopost:image] suspiciously small image: ${arrayBuffer.byteLength} bytes`)
+      const arrayBuffer = await res.arrayBuffer()
+      if (arrayBuffer.byteLength < 5000) {
+        log('[autopost:image:retry]', { attempt, reason: 'small', bytes: arrayBuffer.byteLength })
+        if (attempt === 2) throw new Error(`[autopost:image] suspiciously small image: ${arrayBuffer.byteLength} bytes`)
+        continue
+      }
+      log('[autopost:image:done]', { bytes: arrayBuffer.byteLength, attempt })
+      return Buffer.from(arrayBuffer)
+    } catch (e) {
+      if (attempt === 2) throw e
+      log('[autopost:image:retry]', { attempt, error: String(e).slice(0, 100) })
+    }
   }
-  log('[autopost:image:done]', { bytes: arrayBuffer.byteLength })
-  return Buffer.from(arrayBuffer)
+  throw new Error('[autopost:image] all attempts failed')
 }
 
 async function sendNotification(text: string): Promise<void> {

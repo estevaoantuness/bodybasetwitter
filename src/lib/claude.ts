@@ -225,9 +225,11 @@ REGRAS ABSOLUTAS:
 - Sem causalidade onde há correlação — use "associado a", "estudos sugerem"
 
 FORMATO OBRIGATÓRIO:
-- UM único tweet standalone
-- EXATAMENTE entre 160 e 270 caracteres (NUNCA mais que 270)
+- UM único tweet standalone (NÃO thread, NÃO múltiplos tweets)
+- LIMITE RÍGIDO: máximo 270 caracteres no campo "texto". Conte os caracteres antes de responder. Se passar de 270, corte.
+- Ideal: entre 180 e 260 caracteres
 - Hook forte na primeira frase — dado surpreendente ou contradição
+- Se precisar, sacrifique detalhes para caber no limite. NUNCA ultrapasse 270 chars.
 
 SAÍDA OBRIGATÓRIA — retorne SOMENTE este JSON (sem markdown, sem explicação, sem array):
 {"texto":"tweet em pt-br aqui entre 160-270 chars","imagePrompt":"prompt em inglês"}
@@ -315,8 +317,16 @@ export async function generateAutoPostDraft(type: 'news' | 'curiosity'): Promise
   log('[claude:autopost:json]', { jsonLen: jsonStr.length, preview: jsonStr.slice(0, 200) })
 
   const parsed = JSON.parse(jsonStr) as Record<string, unknown>
-  const texto = typeof parsed.texto === 'string' ? parsed.texto : ''
+  let texto = typeof parsed.texto === 'string' ? parsed.texto : ''
   const imagePrompt = typeof parsed.imagePrompt === 'string' ? parsed.imagePrompt : 'Professional photorealistic photograph of health science concept, soft natural lighting, 8K quality, editorial photography style, no text overlay'
+
+  // Hard safeguard: truncate at last sentence boundary before 280 chars
+  if (texto.length > 280) {
+    log('[claude:autopost:truncate]', { original: texto.length })
+    const cut = texto.slice(0, 277)
+    const lastPeriod = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.) '), cut.lastIndexOf(') '))
+    texto = lastPeriod > 160 ? cut.slice(0, lastPeriod + 1) : cut.slice(0, 277) + '...'
+  }
 
   log('[claude:autopost:parsed]', { textoLen: texto.length, hasImagePrompt: imagePrompt.length > 0 })
 

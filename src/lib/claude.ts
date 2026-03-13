@@ -299,26 +299,42 @@ export async function generateAutoPostDraft(type: 'news' | 'curiosity'): Promise
     output_tokens: usageMeta?.candidatesTokenCount ?? 0,
   })
 
-  const stripped = rawText.replace(/```(?:json)?\s*([\s\S]*?)```/, '$1').trim()
+  // Strip markdown code blocks
+  const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const stripped = codeBlockMatch ? codeBlockMatch[1]!.trim() : rawText.trim()
 
-  // Find first { and its matching } by counting braces (robust against extra text after JSON)
+  log('[claude:autopost:raw]', { rawLen: rawText.length, strippedLen: stripped.length, preview: stripped.slice(0, 300) })
+
+  // Find first { and its matching } by counting braces (handles nested objects, ignores extra text)
   const jsonStart = stripped.indexOf('{')
-  if (jsonStart === -1) throw new Error(`[claude:autopost] no JSON in response: ${stripped.slice(0, 100)}`)
+  if (jsonStart === -1) throw new Error(`[claude:autopost] no JSON in response: ${stripped.slice(0, 200)}`)
 
   let depth = 0
   let jsonEnd = -1
+  let inString = false
+  let escape = false
   for (let i = jsonStart; i < stripped.length; i++) {
-    if (stripped[i] === '{') depth++
-    else if (stripped[i] === '}') {
+    const ch = stripped[i]
+    if (escape) { escape = false; continue }
+    if (ch === '\\' && inString) { escape = true; continue }
+    if (ch === '"' && !escape) { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
       depth--
       if (depth === 0) { jsonEnd = i; break }
     }
   }
   if (jsonEnd === -1) throw new Error(`[claude:autopost] unclosed JSON in response`)
 
-  const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1)) as Record<string, unknown>
-  return {
-    texto: typeof parsed.texto === 'string' ? parsed.texto : '',
-    imagePrompt: typeof parsed.imagePrompt === 'string' ? parsed.imagePrompt : 'scientific health illustration minimalist clean',
-  }
+  const jsonStr = stripped.slice(jsonStart, jsonEnd + 1)
+  log('[claude:autopost:json]', { jsonLen: jsonStr.length, preview: jsonStr.slice(0, 200) })
+
+  const parsed = JSON.parse(jsonStr) as Record<string, unknown>
+  const texto = typeof parsed.texto === 'string' ? parsed.texto : ''
+  const imagePrompt = typeof parsed.imagePrompt === 'string' ? parsed.imagePrompt : 'Professional photorealistic photograph of health science concept, soft natural lighting, 8K quality, editorial photography style, no text overlay'
+
+  log('[claude:autopost:parsed]', { textoLen: texto.length, hasImagePrompt: imagePrompt.length > 0 })
+
+  return { texto, imagePrompt }
 }

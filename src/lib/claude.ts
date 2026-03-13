@@ -300,10 +300,23 @@ export async function generateAutoPostDraft(type: 'news' | 'curiosity'): Promise
   })
 
   const stripped = rawText.replace(/```(?:json)?\s*([\s\S]*?)```/, '$1').trim()
-  const jsonMatch = stripped.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error(`[claude:autopost] no JSON in response: ${stripped.slice(0, 100)}`)
 
-  const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+  // Find first { and its matching } by counting braces (robust against extra text after JSON)
+  const jsonStart = stripped.indexOf('{')
+  if (jsonStart === -1) throw new Error(`[claude:autopost] no JSON in response: ${stripped.slice(0, 100)}`)
+
+  let depth = 0
+  let jsonEnd = -1
+  for (let i = jsonStart; i < stripped.length; i++) {
+    if (stripped[i] === '{') depth++
+    else if (stripped[i] === '}') {
+      depth--
+      if (depth === 0) { jsonEnd = i; break }
+    }
+  }
+  if (jsonEnd === -1) throw new Error(`[claude:autopost] unclosed JSON in response`)
+
+  const parsed = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1)) as Record<string, unknown>
   return {
     texto: typeof parsed.texto === 'string' ? parsed.texto : '',
     imagePrompt: typeof parsed.imagePrompt === 'string' ? parsed.imagePrompt : 'scientific health illustration minimalist clean',

@@ -209,64 +209,48 @@ export async function generateDraftFromTrend(trend: TrendItem): Promise<Draft> {
 
 // --- Auto-post draft generation ---
 
-const AUTOPOST_NEWS_PROMPT = `${SYSTEM_PROMPT}
+// Standalone auto-post prompts — NOT extending SYSTEM_PROMPT to avoid format conflicts
+const AUTOPOST_BASE = `Você é o ghostwriter do @bodybasehealth no Twitter/X.
 
-TAREFA ESPECIAL — AUTO-POST COM IMAGEM (notícias científicas):
-Escolha UMA das notícias abaixo e crie um tweet standalone sobre ela.
+VOZ: Como Peter Attia ou Rhonda Patrick — científico, preciso, sem hype. Dado real + mecanismo simples + implicação prática.
 
-NOTÍCIAS RECENTES:
-{NEWS}
+REGRAS ABSOLUTAS:
+- PT-BR obrigatório
+- NUNCA mencionar "BodyBase", produto, CTA, "link na bio"
+- NUNCA usar verbos: trata, cura, previne, garante (ANVISA/CFM)
+- NUNCA emojis: 🔥💪✨🙌💡
+- NUNCA links externos
+- Máximo 2 hashtags
+- Todo número com fonte: (Autor, Ano) ou (Journal, Ano)
+- Sem causalidade onde há correlação — use "associado a", "estudos sugerem"
 
-REGRAS EXTRAS PARA AUTO-POST:
-- Formato OBRIGATÓRIO: texto standalone (180-240 chars, máx 280)
-- O tweet vai ser postado COM uma imagem gerada por IA
-- Por isso, o texto NÃO deve descrever a imagem — eles se complementam
-- Foque no dado mais surpreendente ou contraintuitivo da notícia
-- Sempre inclua a fonte (Autor, Ano) ou (Journal, Ano)
-- Gere também um prompt em inglês para gerar uma imagem científica minimalista
+FORMATO OBRIGATÓRIO:
+- UM único tweet standalone
+- EXATAMENTE entre 160 e 270 caracteres (NUNCA mais que 270)
+- Hook forte na primeira frase — dado surpreendente ou contradição
 
-Retorne SOMENTE JSON válido (sem markdown):
-{"texto":"tweet em pt-br aqui","imagePrompt":"prompt em inglês para imagem fotorrealista"}`
+SAÍDA OBRIGATÓRIA — retorne SOMENTE este JSON (sem markdown, sem explicação, sem array):
+{"texto":"tweet em pt-br aqui entre 160-270 chars","imagePrompt":"prompt em inglês"}
 
-const AUTOPOST_CURIOSITY_PROMPT = `${SYSTEM_PROMPT}
+REGRAS DO imagePrompt:
+- Fotorrealista — como foto profissional do Getty/Shutterstock
+- Diretamente sobre o assunto do tweet
+- Formato: "Professional photorealistic photograph of [cena], soft natural lighting, shallow depth of field, 8K quality, editorial photography, no text overlay, no watermarks"
+- NUNCA: ilustrações, cartoons, infográficos, arte abstrata`
 
-TAREFA ESPECIAL — AUTO-POST COM IMAGEM (curiosidade científica):
-Gere um tweet sobre uma curiosidade científica fascinante relacionada a: biomarcadores, longevidade, sono, metabolismo, performance cognitiva, hormônios, microbioma, genética, neurociência, fisiologia do exercício.
+const AUTOPOST_NEWS_PROMPT = `${AUTOPOST_BASE}
 
-REGRAS EXTRAS PARA AUTO-POST:
-- Formato OBRIGATÓRIO: texto standalone (180-240 chars, máx 280)
-- O tweet vai ser postado COM uma imagem gerada por IA
-- Escolha fatos que surpreendam — "eu não sabia disso!" é a reação ideal
-- Exemplos de ângulos bons: estatísticas pouco conhecidas, mecanismos biológicos contraintuitivos, comparações inesperadas, dados de estudos recentes
-- Sempre inclua a fonte (Autor, Ano) ou (Journal, Ano)
-- NÃO repita temas que já postou recentemente
-- Gere também um prompt em inglês para gerar uma imagem fotorrealista
+TAREFA: Escolha UMA das notícias abaixo e crie UM tweet sobre ela.
+Foque no dado mais surpreendente ou contraintuitivo.
 
-Retorne SOMENTE JSON válido (sem markdown):
-{"texto":"tweet em pt-br aqui","imagePrompt":"prompt em inglês para imagem fotorrealista"}`
+NOTÍCIAS:
+{NEWS}`
 
-const IMAGE_PROMPT_RULES = `
+const AUTOPOST_CURIOSITY_PROMPT = `${AUTOPOST_BASE}
 
-REGRAS PARA O imagePrompt (CRÍTICO — leia com atenção):
-O imagePrompt será usado para gerar uma imagem com IA. A imagem DEVE ser:
-- FOTORREALISTA — como uma foto profissional de banco de imagens (Getty, Shutterstock)
-- Diretamente sobre o assunto do tweet — se o tweet fala de sono, a imagem mostra alguém dormindo; se fala de biomarcadores, mostra exame de sangue ou laboratório
-- Alta qualidade, iluminação profissional, foco nítido
-- SEM texto na imagem, SEM logos, SEM watermarks
-- SEM ilustrações, SEM cartoons, SEM infográficos, SEM arte abstrata
-
-FORMATO DO imagePrompt:
-"Professional photorealistic photograph of [cena específica do assunto], [detalhes de composição], soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay, no watermarks"
-
-EXEMPLOS BONS:
-- Tweet sobre cortisol/sono: "Professional photorealistic photograph of a person peacefully sleeping in a dark bedroom with soft moonlight through curtains, close-up side view, soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
-- Tweet sobre biomarcadores: "Professional photorealistic photograph of a medical professional analyzing blood test results on a modern laboratory screen, clean clinical environment, soft natural lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
-- Tweet sobre exercício: "Professional photorealistic photograph of an athletic person running at sunrise in a park, dynamic motion captured, golden hour lighting, shallow depth of field, 8K quality, editorial photography style, no text overlay"
-
-EXEMPLOS RUINS (nunca faça):
-- "Scientific illustration of cells" → parece cartoon
-- "Abstract visualization of health data" → sem relação visual clara
-- "Minimalist medical icon" → parece clipart`
+TAREFA: Crie UM tweet com uma curiosidade científica fascinante.
+Temas: biomarcadores, longevidade, sono, metabolismo, performance cognitiva, hormônios, microbioma, genética, neurociência.
+Escolha fatos que surpreendam — a reação ideal é "eu não sabia disso!".`
 
 export interface AutoPostDraft {
   texto: string
@@ -281,12 +265,12 @@ export async function generateAutoPostDraft(type: 'news' | 'curiosity'): Promise
     const news = await fetchHealthNews()
     if (!news) {
       log('[claude:autopost:no-news]', {})
-      prompt = AUTOPOST_CURIOSITY_PROMPT + IMAGE_PROMPT_RULES
+      prompt = AUTOPOST_CURIOSITY_PROMPT
     } else {
-      prompt = AUTOPOST_NEWS_PROMPT.replace('{NEWS}', news) + IMAGE_PROMPT_RULES
+      prompt = AUTOPOST_NEWS_PROMPT.replace('{NEWS}', news)
     }
   } else {
-    prompt = AUTOPOST_CURIOSITY_PROMPT + IMAGE_PROMPT_RULES
+    prompt = AUTOPOST_CURIOSITY_PROMPT
   }
 
   const result = await model.generateContent(prompt)
